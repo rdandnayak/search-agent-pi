@@ -8,6 +8,10 @@ export type Message = {
   content: string;
 };
 
+// Maximum number of search → reason cycles before the agent is forced to answer.
+// Exported so cli.ts can display "search 2 of 5" without hardcoding the value twice.
+export const MAX_STEPS = 5;
+
 // streamAnswer sends the conversation + available tools to the LLM.
 //
 // How tool-calling works in AI SDK v6:
@@ -49,7 +53,7 @@ Do not mention the tool by name in your response.`,
     },
     // Allow up to 5 search rounds before forcing a final answer.
     // Phase 5 will add a reflection step so the agent decides when to stop.
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(MAX_STEPS),
   });
 
   return result;

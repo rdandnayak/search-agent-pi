@@ -34,14 +34,13 @@ and why citations matter for trust in AI answers.
 
 ---
 
-## Phase 4 — Iterative Search Loop
+## ✅ Phase 4 — Iterative Search Loop
 Goal: agent can search → read results → decide to search again if needed.
 
-- [ ] Switch `streamText` to `generateText` with `maxSteps` (Vercel AI SDK
-      supports multi-step tool loops natively)
-- [ ] Agent automatically loops: search → reason → search again → answer
-- [ ] Add a step counter so the user can see "Searching (step 2/5)…"
-- [ ] Cap max steps to avoid runaway loops
+- [x] `streamText` + `stopWhen: stepCountIs(MAX_STEPS)` handles the loop natively in SDK v6 (no need to switch to `generateText` — that would lose streaming)
+- [x] Agent automatically loops: search → reason → search again → answer
+- [x] Step counter shown in spinner: "Searching (2/5): query…"
+- [x] Loop capped via `MAX_STEPS = 5` exported from `agent.ts`
 
 **What you learn:** agentic loops — the difference between a single LLM
 call and a multi-step reasoning + acting cycle.

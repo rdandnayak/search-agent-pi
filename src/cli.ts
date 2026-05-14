@@ -1,6 +1,6 @@
 import * as readline from "readline";
 import * as dotenv from "dotenv";
-import { streamAnswer, Message } from "./agent";
+import { streamAnswer, Message, MAX_STEPS } from "./agent";
 import type { SearchResponse } from "./tools";
 
 dotenv.config();
@@ -80,6 +80,7 @@ async function main() {
     history.push({ role: "user", content: userInput });
 
     let fullResponse = "";
+    let searchCount = 0;
     // Collects every search result URL/title seen this turn.
     const sources: Array<{ title: string; url: string }> = [];
     let stopSpinner = DEBUG ? noSpinner : startSpinner("Thinking…");
@@ -92,10 +93,15 @@ async function main() {
         switch (event.type) {
           case "tool-call": {
             const query = (event.input as { query: string }).query;
-            dbg(`tool called — webSearch("${query}")`);
+            searchCount++;
+            dbg(`search ${searchCount}/${MAX_STEPS} — webSearch("${query}")`);
             if (!DEBUG) {
               stopSpinner();
-              stopSpinner = startSpinner(`Searching: "${query}"…`);
+              const label =
+                searchCount > 1
+                  ? `Searching (${searchCount}/${MAX_STEPS}): "${query}"…`
+                  : `Searching: "${query}"…`;
+              stopSpinner = startSpinner(label);
             }
             break;
           }
