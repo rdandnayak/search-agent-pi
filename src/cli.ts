@@ -2,12 +2,17 @@ import * as readline from "readline";
 import * as dotenv from "dotenv";
 import { streamAnswer, summarizeHistory, Message, MAX_STEPS, TOKEN_TRIM_THRESHOLD, KEEP_TURNS } from "./agent";
 import type { SearchResponse } from "./tools";
+import { createSessionFile, appendMessage, loadSession, getMostRecentSession, sessionSummary } from "./sessions";
 
 dotenv.config();
 
 // Run with `npm run dev -- --debug` to enable step-by-step trace lines.
 const DEBUG = process.argv.includes("--debug");
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+
+// --session <file>  load a specific past session on startup
+const sessionFlagIdx = process.argv.indexOf("--session");
+const sessionFlagFile = sessionFlagIdx !== -1 ? process.argv[sessionFlagIdx + 1] : null;
 
 function dbg(msg: string) {
   if (DEBUG) console.log(dim(`  › ${msg}`));
@@ -43,20 +48,14 @@ function startSpinner(text: string): () => void {
 
 const noSpinner = () => {};
 
-// Prints a deduplicated sources list after the answer.
-// Sources accumulate across all tool-result events in a single turn,
-// so if the agent searches twice we still show each URL once.
 function printSources(sources: Array<{ title: string; url: string }>) {
   if (sources.length === 0) return;
-
-  // Deduplicate by URL — the agent may search the same page in multiple rounds.
   const seen = new Set<string>();
   const unique = sources.filter(({ url }) => {
     if (seen.has(url)) return false;
     seen.add(url);
     return true;
   });
-
   console.log(dim("\nSources:"));
   unique.forEach(({ title, url }, i) => {
     console.log(dim(`  ${i + 1}. ${title}`));
@@ -67,6 +66,42 @@ function printSources(sources: Array<{ title: string; url: string }>) {
 async function main() {
   console.log('Search Agent — type your question, or "exit" to quit.\n');
 
+  // --- Session setup ---
+  // Decide which session file to use and whether to pre-load history.
+  let fileToLoad = sessionFlagFile;
+
+  if (!fileToLoad) {
+    const recent = getMostRecentSession();
+    if (recent) {
+      const answer = await prompt(
+        `Resume last session (${sessionSummary(recent)})? (y/n) `
+      );
+      console.log();
+      if (answer.trim().toLowerCase().startsWith("y")) {
+        fileToLoad = recent;
+      }
+    }
+  }
+
+  // Every run writes to a new file, even when resuming.
+  // Loading a session pre-populates history; new turns append to the fresh file.
+  const sessionFile = createSessionFile();
+
+  if (fileToLoad) {
+    try {
+      const loaded = loadSession(fileToLoad);
+      history.push(...loaded);
+      // Mirror the loaded messages into the new file so it's self-contained.
+      for (const msg of loaded) appendMessage(sessionFile, msg);
+      console.log(dim(`  Loaded ${loaded.length} messages.\n`));
+    } catch {
+      console.error(`Could not load session: ${fileToLoad}\n`);
+    }
+  }
+
+  console.log(dim(`  Session: ${sessionFile}\n`));
+
+  // --- Main loop ---
   while (true) {
     const userInput = (await prompt("You: ")).trim();
 
@@ -83,7 +118,6 @@ async function main() {
     let searchCount = 0;
     const sources: Array<{ title: string; url: string }> = [];
     let stopSpinner = DEBUG ? noSpinner : startSpinner("Thinking…");
-    // Captured inside the try block where stream is in scope, used after.
     let inputTokens = 0;
 
     try {
@@ -119,8 +153,6 @@ async function main() {
 
           case "tool-result": {
             if (event.toolName === "webSearch") {
-              // Accumulate sources from every search round.
-              // printSources() deduplicates before displaying.
               const result = event.output as SearchResponse;
               for (const r of result.results) {
                 sources.push({ title: r.title, url: r.url });
@@ -151,10 +183,6 @@ async function main() {
       }
 
       if (firstText) stopSpinner();
-
-      // Capture token usage before leaving the scope where stream lives.
-      // inputTokens reflects the total size of the conversation sent this turn —
-      // a direct measure of how much of the context window we're using.
       ({ inputTokens = 0 } = await stream.usage);
     } catch (err) {
       stopSpinner();
@@ -166,13 +194,13 @@ async function main() {
 
     history.push({ role: "assistant", content: fullResponse });
 
+    // Persist both turns immediately — safe even if the process is killed next.
+    appendMessage(sessionFile, history[history.length - 2]); // user turn
+    appendMessage(sessionFile, history[history.length - 1]); // assistant turn
+
     printSources(sources);
     console.log("\n");
 
-    // Memory trim: when the conversation sent on this turn exceeded the
-    // threshold, compress old turns before the next call.
-    // We keep the last KEEP_TURNS turns verbatim so recent context is intact,
-    // and replace everything older with a single LLM-generated summary.
     if (inputTokens > TOKEN_TRIM_THRESHOLD && history.length > KEEP_TURNS + 2) {
       try {
         process.stdout.write(dim("  (compressing earlier context…)\n\n"));
@@ -184,7 +212,7 @@ async function main() {
           { role: "assistant", content: "Understood." }
         );
       } catch {
-        // Summarisation failed — leave history untouched, not a critical error.
+        // Summarisation failed — leave history untouched.
       }
     }
   }

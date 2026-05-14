@@ -72,12 +72,13 @@ for any long-running agent.
 
 ---
 
-## Phase 7 — Save Sessions to Disk
+## ✅ Phase 7 — Save Sessions to Disk
 Goal: resume a conversation after restarting the CLI.
 
-- [ ] On each turn, append to `sessions/<timestamp>.jsonl`
-- [ ] On startup, offer to load the most recent session
-- [ ] `--session <file>` flag to load a specific past session
+- [x] Each turn appends to `sessions/<timestamp>.jsonl` immediately (crash-safe)
+- [x] On startup, prompts to resume most recent session if one exists
+- [x] `--session <file>` flag to load a specific past session
+- [x] New file per run; loaded history is mirrored into the new file so it's self-contained
 
 **What you learn:** simple persistence without a database, JSONL format
 for append-only logs.
