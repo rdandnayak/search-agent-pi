@@ -22,12 +22,12 @@ Goal: agent can call a real web search and include results in its answer.
 
 ---
 
-## Phase 3 — Citations / Sources
+## ✅ Phase 3 — Citations / Sources
 Goal: show the user which URLs the answer came from.
 
-- [ ] Tavily results include `url` + `title` — collect them during tool calls
-- [ ] Print a "Sources:" section after the streamed answer in `cli.ts`
-- [ ] Deduplicate sources if the same URL was fetched multiple times
+- [x] Tavily results include `url` + `title` — collect them during tool calls
+- [x] Print a "Sources:" section after the streamed answer in `cli.ts`
+- [x] Deduplicate sources if the same URL was fetched multiple times
 
 **What you learn:** separating *retrieval metadata* from *generated text*,
 and why citations matter for trust in AI answers.

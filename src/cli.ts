@@ -1,6 +1,7 @@
 import * as readline from "readline";
 import * as dotenv from "dotenv";
 import { streamAnswer, Message } from "./agent";
+import type { SearchResponse } from "./tools";
 
 dotenv.config();
 
@@ -14,10 +15,8 @@ function dbg(msg: string) {
 
 const history: Message[] = [];
 
-// terminal: false tells readline not to manage the terminal (no cursor control,
-// no line clearing). Without this, readline's internal terminal management
-// fights with the spinner's \r writes and the spinner never renders.
-// We write the prompt ourselves and read lines via rl.once("line", ...).
+// terminal: false prevents readline from doing its own cursor/line management,
+// which would fight with the spinner's \r writes. Prompts are written manually.
 const rl = readline.createInterface({
   input: process.stdin,
   terminal: false,
@@ -44,6 +43,27 @@ function startSpinner(text: string): () => void {
 
 const noSpinner = () => {};
 
+// Prints a deduplicated sources list after the answer.
+// Sources accumulate across all tool-result events in a single turn,
+// so if the agent searches twice we still show each URL once.
+function printSources(sources: Array<{ title: string; url: string }>) {
+  if (sources.length === 0) return;
+
+  // Deduplicate by URL — the agent may search the same page in multiple rounds.
+  const seen = new Set<string>();
+  const unique = sources.filter(({ url }) => {
+    if (seen.has(url)) return false;
+    seen.add(url);
+    return true;
+  });
+
+  console.log(dim("\nSources:"));
+  unique.forEach(({ title, url }, i) => {
+    console.log(dim(`  ${i + 1}. ${title}`));
+    console.log(dim(`     ${url}`));
+  });
+}
+
 async function main() {
   console.log('Search Agent — type your question, or "exit" to quit.\n');
 
@@ -60,6 +80,8 @@ async function main() {
     history.push({ role: "user", content: userInput });
 
     let fullResponse = "";
+    // Collects every search result URL/title seen this turn.
+    const sources: Array<{ title: string; url: string }> = [];
     let stopSpinner = DEBUG ? noSpinner : startSpinner("Thinking…");
 
     try {
@@ -77,14 +99,22 @@ async function main() {
             }
             break;
           }
+
           case "tool-result": {
             dbg("tool result received");
+            // Accumulate sources from every search round.
+            // printSources() deduplicates before displaying.
+            const result = event.output as SearchResponse;
+            for (const r of result.results) {
+              sources.push({ title: r.title, url: r.url });
+            }
             if (!DEBUG) {
               stopSpinner();
               stopSpinner = startSpinner("Thinking…");
             }
             break;
           }
+
           case "text-delta": {
             if (firstText) {
               stopSpinner();
@@ -95,6 +125,7 @@ async function main() {
             fullResponse += event.text;
             break;
           }
+
           case "error": {
             throw event.error;
           }
@@ -111,6 +142,8 @@ async function main() {
     }
 
     history.push({ role: "assistant", content: fullResponse });
+
+    printSources(sources);
     console.log("\n");
   }
 }
