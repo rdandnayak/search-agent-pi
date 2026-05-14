@@ -8,14 +8,14 @@
 
 ---
 
-## Phase 2 — Tavily Web Search Tool
+## ✅ Phase 2 — Tavily Web Search Tool
 Goal: agent can call a real web search and include results in its answer.
 
-- [ ] Install `@tavily/core`
-- [ ] Add `TAVILY_API_KEY` to `.env.example`
-- [ ] Create `src/tools.ts` — `webSearch(query)` calls Tavily, returns results
-- [ ] Register tool in `agent.ts` using Vercel AI SDK `tools:` option
-- [ ] Agent now decides *when* to search (tool-calling, not hardcoded)
+- [x] Install `@tavily/core`
+- [x] Add `TAVILY_API_KEY` to `.env.example`
+- [x] Create `src/tools.ts` — `webSearch(query)` calls Tavily, returns results
+- [x] Register tool in `agent.ts` using Vercel AI SDK `tools:` option
+- [x] Agent now decides *when* to search (tool-calling, not hardcoded)
 
 **What you learn:** how LLM tool-calling works — the model emits a
 "call this tool" intent, you run it, you feed results back, model continues.

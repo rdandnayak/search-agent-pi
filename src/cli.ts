@@ -2,31 +2,32 @@ import * as readline from "readline";
 import * as dotenv from "dotenv";
 import { streamAnswer, Message } from "./agent";
 
-// Load .env before anything else touches process.env.
-// dotenv.config() is a no-op if the key is already set (e.g. in CI),
-// so this is safe to leave in production builds too.
 dotenv.config();
 
-// Conversation history accumulates every turn.
-// Passing the full history on each call is how LLMs maintain context —
-// they are stateless, so "memory" lives in the caller.
+// Run with `npm run dev -- --debug` to enable step-by-step trace lines.
+const DEBUG = process.argv.includes("--debug");
+const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+
+function dbg(msg: string) {
+  if (DEBUG) console.log(dim(`  › ${msg}`));
+}
+
 const history: Message[] = [];
 
-// readline gives us a simple prompt loop without any external dependency.
-// We use process.stdin / stdout directly so this works in any terminal.
+// terminal: false tells readline not to manage the terminal (no cursor control,
+// no line clearing). Without this, readline's internal terminal management
+// fights with the spinner's \r writes and the spinner never renders.
+// We write the prompt ourselves and read lines via rl.once("line", ...).
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout,
+  terminal: false,
 });
 
 function prompt(question: string): Promise<string> {
-  return new Promise((resolve) => rl.question(question, resolve));
+  process.stdout.write(question);
+  return new Promise((resolve) => rl.once("line", resolve));
 }
 
-// Cycles through braille dot frames every 80ms and writes them in-place
-// using \r (carriage return) to overwrite the same terminal line.
-// Returns a stop function that clears the line so streaming output
-// starts clean from column 0.
 function startSpinner(text: string): () => void {
   const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   let i = 0;
@@ -37,10 +38,11 @@ function startSpinner(text: string): () => void {
 
   return () => {
     clearInterval(timer);
-    // Overwrite the spinner line with spaces, then reset cursor to column 0.
     process.stdout.write(`\r${" ".repeat(text.length + 2)}\r`);
   };
 }
+
+const noSpinner = () => {};
 
 async function main() {
   console.log('Search Agent — type your question, or "exit" to quit.\n');
@@ -55,45 +57,60 @@ async function main() {
       break;
     }
 
-    // Add the user's turn to history before calling the LLM.
     history.push({ role: "user", content: userInput });
 
     let fullResponse = "";
-
-    // Spinner runs while we wait for the first token from the model.
-    // There's a short but noticeable delay between sending the request
-    // and receiving the first streamed chunk — the spinner fills that gap.
-    const stopSpinner = startSpinner("Thinking…");
+    let stopSpinner = DEBUG ? noSpinner : startSpinner("Thinking…");
 
     try {
       const stream = await streamAnswer(history);
+      let firstText = true;
 
-      let firstChunk = true;
-      for await (const chunk of stream.textStream) {
-        if (firstChunk) {
-          // Clear the spinner and print the label only when output actually starts.
-          stopSpinner();
-          process.stdout.write("\nAssistant: ");
-          firstChunk = false;
+      for await (const event of stream.fullStream) {
+        switch (event.type) {
+          case "tool-call": {
+            const query = (event.input as { query: string }).query;
+            dbg(`tool called — webSearch("${query}")`);
+            if (!DEBUG) {
+              stopSpinner();
+              stopSpinner = startSpinner(`Searching: "${query}"…`);
+            }
+            break;
+          }
+          case "tool-result": {
+            dbg("tool result received");
+            if (!DEBUG) {
+              stopSpinner();
+              stopSpinner = startSpinner("Thinking…");
+            }
+            break;
+          }
+          case "text-delta": {
+            if (firstText) {
+              stopSpinner();
+              process.stdout.write("\nAssistant: ");
+              firstText = false;
+            }
+            process.stdout.write(event.text);
+            fullResponse += event.text;
+            break;
+          }
+          case "error": {
+            throw event.error;
+          }
         }
-        process.stdout.write(chunk);
-        fullResponse += chunk;
       }
 
-      // Edge case: stream returned no chunks at all.
-      if (firstChunk) stopSpinner();
+      if (firstText) stopSpinner();
     } catch (err) {
       stopSpinner();
       const message = err instanceof Error ? err.message : String(err);
       console.error(`\nError: ${message}`);
-      // Remove the user turn we just added so the broken turn isn't in history.
       history.pop();
       continue;
     }
 
-    // Save the assistant's full response to history so future turns have context.
     history.push({ role: "assistant", content: fullResponse });
-
     console.log("\n");
   }
 }
