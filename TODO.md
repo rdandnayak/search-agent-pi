@@ -47,13 +47,13 @@ call and a multi-step reasoning + acting cycle.
 
 ---
 
-## Phase 5 — Reflection Step
+## ✅ Phase 5 — Reflection Step
 Goal: agent explicitly decides "do I have enough info, or should I search more?"
 
-- [ ] Add a `reflect` tool (or system prompt instruction) that forces the
-      agent to reason about answer completeness before responding
-- [ ] If reflection says "not enough", trigger another search round
-- [ ] Show reflection reasoning in the terminal (behind a --verbose flag)
+- [x] Added `reflect` tool with `{ reasoning, hasEnoughInfo }` input
+- [x] System prompt instructs agent to call reflect after each search round
+- [x] If `hasEnoughInfo` is false, agent does another webSearch
+- [x] Reasoning shown in `--debug` mode; "Reflecting…" spinner in normal mode
 
 **What you learn:** chain-of-thought and self-evaluation — a simple form
 of the "ReAct" pattern (Reason + Act).

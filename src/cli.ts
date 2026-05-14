@@ -92,27 +92,38 @@ async function main() {
       for await (const event of stream.fullStream) {
         switch (event.type) {
           case "tool-call": {
-            const query = (event.input as { query: string }).query;
-            searchCount++;
-            dbg(`search ${searchCount}/${MAX_STEPS} — webSearch("${query}")`);
-            if (!DEBUG) {
-              stopSpinner();
-              const label =
-                searchCount > 1
-                  ? `Searching (${searchCount}/${MAX_STEPS}): "${query}"…`
-                  : `Searching: "${query}"…`;
-              stopSpinner = startSpinner(label);
+            if (event.toolName === "webSearch") {
+              searchCount++;
+              const query = (event.input as { query: string }).query;
+              dbg(`search ${searchCount}/${MAX_STEPS} — "${query}"`);
+              if (!DEBUG) {
+                stopSpinner();
+                const label =
+                  searchCount > 1
+                    ? `Searching (${searchCount}/${MAX_STEPS}): "${query}"…`
+                    : `Searching: "${query}"…`;
+                stopSpinner = startSpinner(label);
+              }
+            } else if (event.toolName === "reflect") {
+              const input = event.input as { reasoning: string; hasEnoughInfo: boolean };
+              dbg(`reflect — ${input.hasEnoughInfo ? "has enough info" : "needs more search"}`);
+              dbg(`  ${input.reasoning}`);
+              if (!DEBUG) {
+                stopSpinner();
+                stopSpinner = startSpinner("Reflecting…");
+              }
             }
             break;
           }
 
           case "tool-result": {
-            dbg("tool result received");
-            // Accumulate sources from every search round.
-            // printSources() deduplicates before displaying.
-            const result = event.output as SearchResponse;
-            for (const r of result.results) {
-              sources.push({ title: r.title, url: r.url });
+            if (event.toolName === "webSearch") {
+              // Accumulate sources from every search round.
+              // printSources() deduplicates before displaying.
+              const result = event.output as SearchResponse;
+              for (const r of result.results) {
+                sources.push({ title: r.title, url: r.url });
+              }
             }
             if (!DEBUG) {
               stopSpinner();
