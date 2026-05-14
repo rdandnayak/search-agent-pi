@@ -60,13 +60,12 @@ of the "ReAct" pattern (Reason + Act).
 
 ---
 
-## Phase 6 — Conversation Memory Trim
+## ✅ Phase 6 — Conversation Memory Trim
 Goal: long conversations don't blow up the context window or cost too much.
 
-- [ ] Track total token count using `usage` from the Vercel AI SDK response
-- [ ] When history exceeds a threshold, summarize older turns into one
-      "summary" message using a separate LLM call
-- [ ] Keep the last N turns verbatim, replace older turns with the summary
+- [x] `await stream.usage` captures `inputTokens` after each turn
+- [x] When `inputTokens > TOKEN_TRIM_THRESHOLD` (6000), `summarizeHistory()` compresses old turns via a separate `generateText` call
+- [x] Last `KEEP_TURNS` (4) turns kept verbatim; older turns replaced with summary + ack pair
 
 **What you learn:** context window management — a real production concern
 for any long-running agent.

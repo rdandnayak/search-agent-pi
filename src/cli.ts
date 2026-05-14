@@ -1,6 +1,6 @@
 import * as readline from "readline";
 import * as dotenv from "dotenv";
-import { streamAnswer, Message, MAX_STEPS } from "./agent";
+import { streamAnswer, summarizeHistory, Message, MAX_STEPS, TOKEN_TRIM_THRESHOLD, KEEP_TURNS } from "./agent";
 import type { SearchResponse } from "./tools";
 
 dotenv.config();
@@ -81,9 +81,10 @@ async function main() {
 
     let fullResponse = "";
     let searchCount = 0;
-    // Collects every search result URL/title seen this turn.
     const sources: Array<{ title: string; url: string }> = [];
     let stopSpinner = DEBUG ? noSpinner : startSpinner("Thinking…");
+    // Captured inside the try block where stream is in scope, used after.
+    let inputTokens = 0;
 
     try {
       const stream = await streamAnswer(history);
@@ -150,6 +151,11 @@ async function main() {
       }
 
       if (firstText) stopSpinner();
+
+      // Capture token usage before leaving the scope where stream lives.
+      // inputTokens reflects the total size of the conversation sent this turn —
+      // a direct measure of how much of the context window we're using.
+      ({ inputTokens = 0 } = await stream.usage);
     } catch (err) {
       stopSpinner();
       const message = err instanceof Error ? err.message : String(err);
@@ -162,6 +168,25 @@ async function main() {
 
     printSources(sources);
     console.log("\n");
+
+    // Memory trim: when the conversation sent on this turn exceeded the
+    // threshold, compress old turns before the next call.
+    // We keep the last KEEP_TURNS turns verbatim so recent context is intact,
+    // and replace everything older with a single LLM-generated summary.
+    if (inputTokens > TOKEN_TRIM_THRESHOLD && history.length > KEEP_TURNS + 2) {
+      try {
+        process.stdout.write(dim("  (compressing earlier context…)\n\n"));
+        const summary = await summarizeHistory(history.slice(0, -KEEP_TURNS));
+        history.splice(
+          0,
+          history.length - KEEP_TURNS,
+          { role: "user", content: `[Summary of earlier conversation]\n${summary}` },
+          { role: "assistant", content: "Understood." }
+        );
+      } catch {
+        // Summarisation failed — leave history untouched, not a critical error.
+      }
+    }
   }
 }
 
