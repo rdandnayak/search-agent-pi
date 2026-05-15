@@ -1,4 +1,5 @@
 import { tavily } from "@tavily/core";
+import { config } from "./config";
 
 // The shape of a single search result we pass to the LLM.
 // We only keep what's useful — title, URL, and a content snippet.
@@ -24,10 +25,8 @@ export async function webSearch(query: string): Promise<SearchResponse> {
   const client = tavily({ apiKey });
 
   const response = await client.search(query, {
-    maxResults: 5,
-    // "basic" is faster and cheaper; "advanced" does deeper scraping.
-    // Stick with basic for now — upgrade in a later phase if needed.
-    searchDepth: "basic",
+    maxResults: config.maxSearchResults,
+    searchDepth: config.searchDepth,
   });
 
   return {

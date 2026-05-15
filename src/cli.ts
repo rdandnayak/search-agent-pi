@@ -1,10 +1,8 @@
 import * as readline from "readline";
-import * as dotenv from "dotenv";
-import { streamAnswer, summarizeHistory, Message, MAX_STEPS, TOKEN_TRIM_THRESHOLD, KEEP_TURNS } from "./agent";
+import { streamAnswer, summarizeHistory, Message } from "./agent";
+import { config } from "./config";
 import type { SearchResponse } from "./tools";
 import { createSessionFile, appendMessage, loadSession, getMostRecentSession, sessionSummary } from "./sessions";
-
-dotenv.config();
 
 // Run with `npm run dev -- --debug` to enable step-by-step trace lines.
 const DEBUG = process.argv.includes("--debug");
@@ -130,12 +128,12 @@ async function main() {
             if (event.toolName === "webSearch") {
               searchCount++;
               const query = (event.input as { query: string }).query;
-              dbg(`search ${searchCount}/${MAX_STEPS} — "${query}"`);
+              dbg(`search ${searchCount}/${config.maxSteps} — "${query}"`);
               if (!DEBUG) {
                 stopSpinner();
                 const label =
                   searchCount > 1
-                    ? `Searching (${searchCount}/${MAX_STEPS}): "${query}"…`
+                    ? `Searching (${searchCount}/${config.maxSteps}): "${query}"…`
                     : `Searching: "${query}"…`;
                 stopSpinner = startSpinner(label);
               }
@@ -201,13 +199,13 @@ async function main() {
     printSources(sources);
     console.log("\n");
 
-    if (inputTokens > TOKEN_TRIM_THRESHOLD && history.length > KEEP_TURNS + 2) {
+    if (inputTokens > config.tokenTrimThreshold && history.length > config.keepTurns + 2) {
       try {
         process.stdout.write(dim("  (compressing earlier context…)\n\n"));
-        const summary = await summarizeHistory(history.slice(0, -KEEP_TURNS));
+        const summary = await summarizeHistory(history.slice(0, -config.keepTurns));
         history.splice(
           0,
-          history.length - KEEP_TURNS,
+          history.length - config.keepTurns,
           { role: "user", content: `[Summary of earlier conversation]\n${summary}` },
           { role: "assistant", content: "Understood." }
         );

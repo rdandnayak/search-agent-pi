@@ -126,14 +126,13 @@ breaking something in a previous one silently.
 
 ---
 
-## Phase 11 — Config File
+## ✅ Phase 11 — Config File
 Goal: tune agent behaviour without hunting through source files.
 
-- [ ] Create `src/config.ts` that centralises all tunable values:
-      `MAX_STEPS`, `TOKEN_TRIM_THRESHOLD`, `KEEP_TURNS`, `searchDepth`,
-      system prompt location, default model
-- [ ] Other files import from `config.ts` instead of defining constants locally
-- [ ] Document each value with its effect and safe range
+- [x] `src/config.ts` centralises all tunable values with documented safe ranges
+- [x] `config.ts` also owns `dotenv.config()` — env vars loaded in one place
+- [x] `agent.ts`, `tools.ts`, `server.ts`, `cli.ts` all import from `config`
+- [x] Tests updated — stale constant stubs removed from server mock
 
 **Why it matters:** right now changing agent behaviour means knowing which
 of 3 files to edit. A single config surface makes experimentation fast.

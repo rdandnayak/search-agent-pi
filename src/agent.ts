@@ -2,34 +2,20 @@ import { streamText, generateText, tool, zodSchema, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { webSearch } from "./tools";
+import { config } from "./config";
 
 export type Message = {
   role: "user" | "assistant";
   content: string;
 };
 
-export const MAX_STEPS = 8;
-
-// When inputTokens from the last call exceeds this, compress old turns.
-// 6000 tokens ≈ 10–15 back-and-forth exchanges — well within gpt-4o's
-// 128k window, but trimming early keeps costs predictable.
-export const TOKEN_TRIM_THRESHOLD = 6000;
-
-// How many recent turns to keep verbatim after compression (must be even
-// so we always preserve complete user/assistant pairs).
-export const KEEP_TURNS = 4;
-
-// Summarises a slice of conversation history into a single paragraph.
-// Called by cli.ts when history grows past TOKEN_TRIM_THRESHOLD.
-// Uses generateText (non-streaming) since this is a background operation.
 export async function summarizeHistory(turns: Message[]): Promise<string> {
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o";
   const conversation = turns
     .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
     .join("\n\n");
 
   const { text } = await generateText({
-    model: openai(model),
+    model: openai(config.model),
     prompt: `Summarize the following conversation concisely. Preserve all key facts, questions asked, and important answers:\n\n${conversation}`,
   });
 
@@ -37,10 +23,8 @@ export async function summarizeHistory(turns: Message[]): Promise<string> {
 }
 
 export async function streamAnswer(messages: Message[]) {
-  const model = process.env.OPENAI_MODEL ?? "gpt-4o";
-
   const result = streamText({
-    model: openai(model),
+    model: openai(config.model),
     system: `You are a helpful research assistant with access to web search.
 The user is based in Bangalore, India.
 Today's date is ${new Date().toDateString()}.
@@ -74,11 +58,6 @@ Do not mention either tool by name in your response.`,
         execute: async (input) => webSearch(input.query),
       }),
 
-      // The reflect tool is a structured "think out loud" checkpoint.
-      // It has no side effects — execute() just echoes the decision back.
-      // Its value is making the agent's reasoning observable (visible in
-      // debug mode) and giving the model a clear moment to decide whether
-      // to search more or answer now, rather than guessing when to stop.
       reflect: tool({
         description:
           "Assess whether your current search results are sufficient to give " +
@@ -98,7 +77,7 @@ Do not mention either tool by name in your response.`,
         }),
       }),
     },
-    stopWhen: stepCountIs(MAX_STEPS),
+    stopWhen: stepCountIs(config.maxSteps),
   });
 
   return result;

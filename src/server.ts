@@ -1,16 +1,12 @@
 import express from "express";
 import * as path from "path";
-import * as dotenv from "dotenv";
 import { streamAnswer, Message } from "./agent";
+import { config } from "./config";
 import type { SearchResponse } from "./tools";
-
-dotenv.config();
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(process.cwd(), "public")));
-
-const PORT = process.env.PORT ?? 3000;
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
@@ -78,9 +74,9 @@ app.post("/chat", async (req, res) => {
 
 // Only start listening when run directly (not when imported in tests).
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Search Agent API  →  http://localhost:${PORT}`);
-    console.log(`Web UI            →  http://localhost:${PORT}/`);
+  app.listen(config.port, () => {
+    console.log(`Search Agent API  →  http://localhost:${config.port}`);
+    console.log(`Web UI            →  http://localhost:${config.port}/`);
   });
 }
 

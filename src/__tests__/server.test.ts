@@ -11,14 +11,12 @@ vi.mock("../agent", () => ({
       yield { type: "text-delta", text: "world." };
     })(),
   })),
-  MAX_STEPS:             8,
-  TOKEN_TRIM_THRESHOLD:  6000,
-  KEEP_TURNS:            4,
-  summarizeHistory:      vi.fn(),
+  summarizeHistory: vi.fn(),
 }));
 
-// Import app after mocking so it picks up the mocked agent.
-const { app } = await import("../server");
+// Vitest hoists vi.mock() calls before imports, so the mock is in place
+// by the time server.ts is evaluated — no dynamic import needed.
+import { app } from "../server";
 
 // Parse a raw NDJSON response body into an array of objects.
 function parseNdjson(body: string) {
