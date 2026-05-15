@@ -139,13 +139,14 @@ of 3 files to edit. A single config surface makes experimentation fast.
 
 ---
 
-## Phase 12 — More Tools
+## ✅ Phase 12 — More Tools
 Goal: expand what the agent can actually do beyond web search.
 
-- [ ] **Calculator tool** — evaluate maths expressions locally (no LLM arithmetic)
-- [ ] **URL reader tool** — fetch and extract plain text from a URL the user pastes
-- [ ] **Weather tool** — Open-Meteo API (free, no key), India-localised by default
-- [ ] Each tool is a new function in `src/tools.ts` + a new entry in `agent.ts`'s `tools:` object
+- [x] **Calculator** — `calculate(expression)` via mathjs; prevents LLM arithmetic errors
+- [x] **URL reader** — `readUrl(url)` strips HTML to plain text; capped at `config.urlReadMaxChars`
+- [x] **Weather** — `getWeather(city)` via Open-Meteo (free, no key); defaults to `config.defaultCity`
+- [x] All three wired into `agent.ts` tools + display in `cli.ts` spinner + `server.ts` status events
+- [x] 11 new tests added; 24/24 passing
 
 **Why these three:** calculator prevents hallucinated maths, URL reader lets
 the agent read specific pages, weather is a useful zero-cost addition.

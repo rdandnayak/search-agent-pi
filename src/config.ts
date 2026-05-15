@@ -34,6 +34,15 @@ export const config = {
   // more results = more context but also more tokens sent to the LLM.
   maxSearchResults: 5,
 
+  // ── URL reader ─────────────────────────────────────────────────────────
+  // Max characters of page content sent to the LLM. Higher = more context
+  // but more tokens. 5000 covers most article intros and product pages.
+  urlReadMaxChars: 5000,
+
+  // ── Weather ────────────────────────────────────────────────────────────
+  // Fallback city when the user asks about weather without specifying one.
+  defaultCity: "Bangalore",
+
   // ── Server ─────────────────────────────────────────────────────────────
   port: Number(process.env.PORT ?? 3000),
 };

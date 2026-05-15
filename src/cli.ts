@@ -137,6 +137,27 @@ async function main() {
                     : `Searching: "${query}"…`;
                 stopSpinner = startSpinner(label);
               }
+            } else if (event.toolName === "calculate") {
+              const { expression } = event.input as { expression: string };
+              dbg(`calculate — ${expression}`);
+              if (!DEBUG) {
+                stopSpinner();
+                stopSpinner = startSpinner(`Calculating…`);
+              }
+            } else if (event.toolName === "readUrl") {
+              const { url } = event.input as { url: string };
+              dbg(`readUrl — ${url}`);
+              if (!DEBUG) {
+                stopSpinner();
+                stopSpinner = startSpinner(`Reading page…`);
+              }
+            } else if (event.toolName === "weather") {
+              const { city } = event.input as { city: string };
+              dbg(`weather — ${city}`);
+              if (!DEBUG) {
+                stopSpinner();
+                stopSpinner = startSpinner(`Getting weather for ${city}…`);
+              }
             } else if (event.toolName === "reflect") {
               const input = event.input as { reasoning: string; hasEnoughInfo: boolean };
               dbg(`reflect — ${input.hasEnoughInfo ? "has enough info" : "needs more search"}`);

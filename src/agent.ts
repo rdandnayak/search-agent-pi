@@ -1,7 +1,7 @@
 import { streamText, generateText, tool, zodSchema, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
-import { webSearch } from "./tools";
+import { webSearch, calculate, readUrl, getWeather } from "./tools";
 import { config } from "./config";
 
 export type Message = {
@@ -39,11 +39,16 @@ When searching for products or releases:
 - If results mention a model you didn't know about, that is the correct answer — do not second-guess it
 - Prefer results relevant to India; show prices in Indian Rupees (₹)
 
+You also have these tools — use them proactively:
+- calculate: for ANY arithmetic, percentages, or unit conversions — never compute in your head
+- readUrl: when the user provides a URL, or when a search snippet isn't enough and you need the full page
+- weather: for current weather queries; defaults to ${config.defaultCity} if no city is given
+
 After each round of searching, call the reflect tool to assess whether you
 have enough information to give a complete and accurate answer.
 - If hasEnoughInfo is false, do another webSearch with a more targeted query.
 - If hasEnoughInfo is true, write your final answer immediately after.
-Do not mention either tool by name in your response.`,
+Do not mention tool names in your response.`,
     messages,
     tools: {
       webSearch: tool({
@@ -56,6 +61,44 @@ Do not mention either tool by name in your response.`,
           })
         ),
         execute: async (input) => webSearch(input.query),
+      }),
+
+      calculate: tool({
+        description:
+          "Evaluate a mathematical expression. Use for arithmetic, percentages, " +
+          "and conversions instead of computing yourself.",
+        inputSchema: zodSchema(
+          z.object({
+            expression: z
+              .string()
+              .describe("A valid mathjs expression, e.g. '2500 * 0.18' or 'sqrt(144)'"),
+          })
+        ),
+        execute: async (input) => calculate(input.expression),
+      }),
+
+      readUrl: tool({
+        description:
+          "Fetch and read the plain-text content of a webpage. Use when the user " +
+          "provides a URL, or when a search snippet is too short to answer from.",
+        inputSchema: zodSchema(
+          z.object({
+            url: z.string().describe("The full URL to fetch"),
+          })
+        ),
+        execute: async (input) => readUrl(input.url),
+      }),
+
+      weather: tool({
+        description: `Get current weather for a city. Defaults to ${config.defaultCity} if no city is mentioned.`,
+        inputSchema: zodSchema(
+          z.object({
+            city: z
+              .string()
+              .describe(`City name, e.g. "Mumbai" or "Delhi". Default: ${config.defaultCity}`),
+          })
+        ),
+        execute: async (input) => getWeather(input.city),
       }),
 
       reflect: tool({

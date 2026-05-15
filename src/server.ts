@@ -44,8 +44,17 @@ app.post("/chat", async (req, res) => {
     for await (const event of stream.fullStream) {
       if (event.type === "tool-call") {
         if (event.toolName === "webSearch") {
-          const query = (event.input as { query: string }).query;
+          const { query } = event.input as { query: string };
           send({ type: "status", message: `Searching: "${query}"…` });
+        } else if (event.toolName === "calculate") {
+          const { expression } = event.input as { expression: string };
+          send({ type: "status", message: `Calculating: ${expression}…` });
+        } else if (event.toolName === "readUrl") {
+          const { url } = event.input as { url: string };
+          send({ type: "status", message: `Reading: ${url}…` });
+        } else if (event.toolName === "weather") {
+          const { city } = event.input as { city: string };
+          send({ type: "status", message: `Getting weather for ${city}…` });
         } else if (event.toolName === "reflect") {
           send({ type: "status", message: "Reflecting…" });
         }
