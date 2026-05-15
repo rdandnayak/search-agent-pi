@@ -109,3 +109,83 @@ Goal: a minimal browser chat interface backed by the Phase 8 API.
 
 **What you learn:** streaming HTTP responses in the browser, and how a
 thin UI layer sits cleanly on top of an existing API.
+
+---
+
+## ✅ Phase 10 — Tests
+Goal: make refactoring safe — change anything without fear of silent breakage.
+
+- [x] Installed Vitest + supertest
+- [x] `src/__tests__/sessions.test.ts` — append/load round-trip, blank line handling, summary count
+- [x] `src/__tests__/tools.test.ts` — mock Tavily, assert SearchResponse shape, missing API key throws
+- [x] `src/__tests__/server.test.ts` — mock streamAnswer, assert NDJSON event sequence + full text
+- [x] `server.ts` exports `app`; `listen()` only runs when executed directly
+
+**Why before adding more features:** without tests, every new phase risks
+breaking something in a previous one silently.
+
+---
+
+## Phase 11 — Config File
+Goal: tune agent behaviour without hunting through source files.
+
+- [ ] Create `src/config.ts` that centralises all tunable values:
+      `MAX_STEPS`, `TOKEN_TRIM_THRESHOLD`, `KEEP_TURNS`, `searchDepth`,
+      system prompt location, default model
+- [ ] Other files import from `config.ts` instead of defining constants locally
+- [ ] Document each value with its effect and safe range
+
+**Why it matters:** right now changing agent behaviour means knowing which
+of 3 files to edit. A single config surface makes experimentation fast.
+
+---
+
+## Phase 12 — More Tools
+Goal: expand what the agent can actually do beyond web search.
+
+- [ ] **Calculator tool** — evaluate maths expressions locally (no LLM arithmetic)
+- [ ] **URL reader tool** — fetch and extract plain text from a URL the user pastes
+- [ ] **Weather tool** — Open-Meteo API (free, no key), India-localised by default
+- [ ] Each tool is a new function in `src/tools.ts` + a new entry in `agent.ts`'s `tools:` object
+
+**Why these three:** calculator prevents hallucinated maths, URL reader lets
+the agent read specific pages, weather is a useful zero-cost addition.
+
+---
+
+## Phase 13 — Model Switching
+Goal: switch between OpenAI and Claude without changing code.
+
+- [ ] Add `--model` CLI flag and `MODEL_PROVIDER` env var (`openai` | `anthropic`)
+- [ ] Install `@ai-sdk/anthropic`
+- [ ] In `agent.ts`, select the provider based on config — rest of the code unchanged
+- [ ] Document which models work well for search-heavy vs reasoning-heavy queries
+
+**Why useful:** compare answer quality and cost on the same question; fall back
+to Claude when OpenAI is slow or down.
+
+---
+
+## Phase 14 — Conversation Export
+Goal: save a research session as a readable Markdown document.
+
+- [ ] Add `export` command in the CLI loop (type "export" to trigger)
+- [ ] Write current session to `exports/<timestamp>.md` formatted as Q&A
+- [ ] Include sources inline under each assistant answer
+- [ ] Print the file path when done
+
+**Why useful:** turns the agent into a research tool whose output you can
+keep, share, or paste into notes.
+
+---
+
+## Phase 15 — Docker
+Goal: run the agent on any machine without installing Node or managing `.env` manually.
+
+- [ ] Write a `Dockerfile` for the server (`npm run build` + `node dist/server.js`)
+- [ ] Write a `docker-compose.yml` that mounts `.env` and exposes port 3000
+- [ ] Add a `README.md` with one-command setup: `docker compose up`
+- [ ] Test that sessions persist via a volume mount
+
+**Why useful:** upgrade the app by rebuilding the image; run it on a home
+server or small VPS without environment setup every time.
