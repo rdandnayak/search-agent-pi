@@ -1,0 +1,13 @@
+services:
+  agent:
+    build: .
+    ports:
+      - "3000:3000"
+    # Reads OPENAI_API_KEY, TAVILY_API_KEY, OPENAI_MODEL, PORT from .env
+    env_file:
+      - .env
+    volumes:
+      # Sessions written inside the container persist on the host.
+      # Without this, sessions are lost every time the container restarts.
+      - ./sessions:/app/sessions
+    restart: unless-stopped

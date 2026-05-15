@@ -153,39 +153,26 @@ the agent read specific pages, weather is a useful zero-cost addition.
 
 ---
 
-## Phase 13 — Model Switching
-Goal: switch between OpenAI and Claude without changing code.
-
-- [ ] Add `--model` CLI flag and `MODEL_PROVIDER` env var (`openai` | `anthropic`)
-- [ ] Install `@ai-sdk/anthropic`
-- [ ] In `agent.ts`, select the provider based on config — rest of the code unchanged
-- [ ] Document which models work well for search-heavy vs reasoning-heavy queries
-
-**Why useful:** compare answer quality and cost on the same question; fall back
-to Claude when OpenAI is slow or down.
-
----
-
-## Phase 14 — Conversation Export
-Goal: save a research session as a readable Markdown document.
-
-- [ ] Add `export` command in the CLI loop (type "export" to trigger)
-- [ ] Write current session to `exports/<timestamp>.md` formatted as Q&A
-- [ ] Include sources inline under each assistant answer
-- [ ] Print the file path when done
-
-**Why useful:** turns the agent into a research tool whose output you can
-keep, share, or paste into notes.
-
----
-
-## Phase 15 — Docker
+## ✅ Phase 15 — Docker
 Goal: run the agent on any machine without installing Node or managing `.env` manually.
 
-- [ ] Write a `Dockerfile` for the server (`npm run build` + `node dist/server.js`)
-- [ ] Write a `docker-compose.yml` that mounts `.env` and exposes port 3000
-- [ ] Add a `README.md` with one-command setup: `docker compose up`
-- [ ] Test that sessions persist via a volume mount
+- [x] Multi-stage `Dockerfile` — builder stage compiles TS, runtime stage has only production deps
+- [x] `docker-compose.yml` — mounts `.env`, exposes port 3000, persists `sessions/` as a volume
+- [x] `README.md` — one-command setup, API reference, config table
+- [x] `.dockerignore` — excludes node_modules, dist, .env, sessions from build context
+- [x] Fixed: test files excluded from `tsconfig.json` build + Vitest scoped to `src/` only
 
 **Why useful:** upgrade the app by rebuilding the image; run it on a home
 server or small VPS without environment setup every time.
+
+---
+
+## Backlog
+
+### Model Switching (was Phase 13)
+- Add `MODEL_PROVIDER` env var (`openai` | `anthropic`), install `@ai-sdk/anthropic`
+- Select provider in `agent.ts` based on config — rest of the code unchanged
+
+### Conversation Export (was Phase 14)
+- `export` command in CLI writes current session to `exports/<timestamp>.md`
+- Formatted as Q&A with sources inline under each answer
