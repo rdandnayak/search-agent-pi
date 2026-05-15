@@ -5,10 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev              # run normally with spinner
+npm run dev              # run CLI with spinner
 npm run dev -- --debug   # verbose debug mode (suppresses spinner, prints trace lines)
+npm run server           # run HTTP API server (port 3000)
 npm run build            # tsc compile → dist/
 npm run start            # run compiled dist/cli.js
+npm run start:server     # run compiled dist/server.js
 npx tsc --noEmit         # type-check without emitting
 ```
 

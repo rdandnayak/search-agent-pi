@@ -85,14 +85,13 @@ for append-only logs.
 
 ---
 
-## Phase 8 — Expose as HTTP API
+## ✅ Phase 8 — Expose as HTTP API
 Goal: the same agent logic, callable over HTTP (no CLI needed).
 
-- [ ] Install `express` + `@types/express`
-- [ ] Create `src/server.ts` — POST `/chat` accepts `{ messages }`, streams
-      back the response using chunked transfer encoding
-- [ ] `agent.ts` stays unchanged — only `server.ts` is new
-- [ ] Test with `curl` or a REST client
+- [x] Installed `express` + `@types/express`
+- [x] `src/server.ts` — POST `/chat` streams NDJSON (one JSON event per line)
+- [x] `agent.ts` unchanged — confirmed the Phase 1 separation pays off
+- [x] GET `/health` for sanity checks
 
 **What you learn:** why the agent/CLI separation from Phase 1 pays off —
 you swap `cli.ts` for `server.ts` and the core logic is untouched.
