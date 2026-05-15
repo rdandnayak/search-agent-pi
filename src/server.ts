@@ -1,4 +1,5 @@
 import express from "express";
+import * as path from "path";
 import * as dotenv from "dotenv";
 import { streamAnswer, Message } from "./agent";
 import type { SearchResponse } from "./tools";
@@ -7,10 +8,10 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.use(express.static(path.join(process.cwd(), "public")));
 
 const PORT = process.env.PORT ?? 3000;
 
-// Health check — useful for confirming the server is up.
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
@@ -20,14 +21,13 @@ app.get("/health", (_req, res) => {
 // Body:  { messages: [{ role: "user"|"assistant", content: string }] }
 //
 // Response: NDJSON stream — one JSON object per line:
-//   { type: "text",    text: "..." }       — streamed text chunk
-//   { type: "sources", sources: [...] }    — deduplicated search sources
-//   { type: "done" }                       — stream finished
-//   { type: "error",   message: "..." }    — something went wrong
+//   { type: "status",  message: "Searching…" }  — tool activity
+//   { type: "text",    text: "..." }             — streamed text chunk
+//   { type: "sources", sources: [...] }          — deduplicated search sources
+//   { type: "done" }                             — stream finished
+//   { type: "error",   message: "..." }          — something went wrong
 //
-// The server is stateless — the client sends the full message history each
-// request and appends the assistant reply to its own history. Same model
-// as the OpenAI Chat API.
+// Stateless: client owns history and sends it in full each request.
 app.post("/chat", async (req, res) => {
   const { messages } = req.body as { messages: Message[] };
 
@@ -36,34 +36,36 @@ app.post("/chat", async (req, res) => {
     return;
   }
 
-  // NDJSON: each write is a complete JSON line.
-  // Chunked transfer encoding is set automatically by Express when you
-  // call res.write() before res.end().
   res.setHeader("Content-Type", "application/x-ndjson");
   res.setHeader("Cache-Control", "no-cache");
 
   const send = (obj: object) => res.write(JSON.stringify(obj) + "\n");
-
   const sources: Array<{ title: string; url: string }> = [];
 
   try {
     const stream = await streamAnswer(messages);
 
     for await (const event of stream.fullStream) {
-      if (event.type === "text-delta") {
-        send({ type: "text", text: event.text });
-      } else if (event.type === "tool-result" && event.toolName === "webSearch") {
-        const result = event.output as SearchResponse;
-        for (const r of result.results) {
-          sources.push({ title: r.title, url: r.url });
+      if (event.type === "tool-call") {
+        if (event.toolName === "webSearch") {
+          const query = (event.input as { query: string }).query;
+          send({ type: "status", message: `Searching: "${query}"…` });
+        } else if (event.toolName === "reflect") {
+          send({ type: "status", message: "Reflecting…" });
         }
+      } else if (event.type === "tool-result") {
+        if (event.toolName === "webSearch") {
+          const result = event.output as SearchResponse;
+          for (const r of result.results) sources.push({ title: r.title, url: r.url });
+        }
+        send({ type: "status", message: "Thinking…" });
+      } else if (event.type === "text-delta") {
+        send({ type: "text", text: event.text });
       }
     }
 
-    // Deduplicate by URL before sending.
     const seen = new Set<string>();
     const unique = sources.filter(({ url }) => !seen.has(url) && seen.add(url) as unknown as boolean);
-
     send({ type: "sources", sources: unique });
     send({ type: "done" });
   } catch (err) {
@@ -75,7 +77,6 @@ app.post("/chat", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Search Agent API listening on http://localhost:${PORT}`);
-  console.log(`  POST /chat  — stream a response`);
-  console.log(`  GET  /health — health check\n`);
+  console.log(`Search Agent API  →  http://localhost:${PORT}`);
+  console.log(`Web UI            →  http://localhost:${PORT}/`);
 });

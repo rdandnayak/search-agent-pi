@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Search Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --user-bg: #0071e3;
+      --user-text: #ffffff;
+      --agent-bg: #e9e9eb;
+      --agent-text: #1a1a1a;
+      --status-text: #888;
+      --source-text: #0071e3;
+      --border: #ddd;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.5rem;
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .row {
+      display: flex;
+      flex-direction: column;
+      max-width: 75%;
+    }
+    .row.user  { align-self: flex-end; align-items: flex-end; }
+    .row.agent { align-self: flex-start; }
+
+    .bubble {
+      padding: 0.6rem 0.9rem;
+      border-radius: 1.1rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .row.user  .bubble { background: var(--user-bg); color: var(--user-text); border-bottom-right-radius: 0.3rem; }
+    .row.agent .bubble { background: var(--agent-bg); color: var(--agent-text); border-bottom-left-radius: 0.3rem; }
+
+    .status {
+      font-size: 0.82rem;
+      color: var(--status-text);
+      font-style: italic;
+      padding: 0.2rem 0.2rem;
+    }
+
+    .sources {
+      margin-top: 0.4rem;
+      font-size: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .sources a {
+      color: var(--source-text);
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sources a:hover { text-decoration: underline; }
+    .sources-label {
+      color: var(--status-text);
+      font-size: 0.75rem;
+      margin-bottom: 0.1rem;
+    }
+
+    /* blinking cursor while streaming */
+    .cursor::after {
+      content: "▍";
+      animation: blink 0.8s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    #form {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1rem;
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    #input {
+      flex: 1;
+      padding: 0.6rem 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: 1.5rem;
+      font-size: 0.95rem;
+      font-family: var(--font);
+      outline: none;
+    }
+    #input:focus { border-color: var(--user-bg); }
+
+    #send {
+      padding: 0.6rem 1.2rem;
+      background: var(--user-bg);
+      color: #fff;
+      border: none;
+      border-radius: 1.5rem;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    #send:disabled { opacity: 0.5; cursor: default; }
+  </style>
+</head>
+<body>
+  <header>Search Agent</header>
+  <div id="messages"></div>
+  <form id="form">
+    <input id="input" autocomplete="off" placeholder="Ask anything…" />
+    <button id="send" type="submit">Send</button>
+  </form>
+
+  <script>
+    const messagesEl = document.getElementById("messages");
+    const form       = document.getElementById("form");
+    const input      = document.getElementById("input");
+    const sendBtn    = document.getElementById("send");
+
+    // Client-owned conversation history — sent in full with every request.
+    const history = [];
+
+    function addRow(role) {
+      const row = document.createElement("div");
+      row.className = `row ${role}`;
+      messagesEl.appendChild(row);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return row;
+    }
+
+    function addBubble(row, text) {
+      const b = document.createElement("div");
+      b.className = "bubble";
+      b.textContent = text;
+      row.appendChild(b);
+      return b;
+    }
+
+    // The status line sits above the agent bubble and updates in place.
+    function addStatus(row) {
+      const s = document.createElement("div");
+      s.className = "status";
+      row.prepend(s);
+      return s;
+    }
+
+    function addSources(row, sources) {
+      if (!sources.length) return;
+      const seen = new Set();
+      const unique = sources.filter(s => !seen.has(s.url) && seen.add(s.url));
+      if (!unique.length) return;
+
+      const wrap = document.createElement("div");
+      wrap.className = "sources";
+
+      const label = document.createElement("div");
+      label.className = "sources-label";
+      label.textContent = "Sources";
+      wrap.appendChild(label);
+
+      unique.forEach(({ title, url }) => {
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = title || url;
+        wrap.appendChild(a);
+      });
+
+      row.appendChild(wrap);
+    }
+
+    async function send(content) {
+      // Show user bubble
+      const userRow = addRow("user");
+      addBubble(userRow, content);
+
+      history.push({ role: "user", content });
+
+      // Prepare agent row with status + empty streaming bubble
+      const agentRow   = addRow("agent");
+      const statusEl   = addStatus(agentRow);
+      const bubble     = addBubble(agentRow, "");
+      bubble.classList.add("cursor");
+
+      sendBtn.disabled = true;
+      input.disabled   = true;
+      statusEl.textContent = "Thinking…";
+
+      let fullText = "";
+      let sources  = [];
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: history }),
+        });
+
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+        // Parse NDJSON from a ReadableStream line by line.
+        const reader  = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";    // keep partial last line in buffer
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line);
+
+            if (event.type === "status") {
+              statusEl.textContent = event.message;
+            } else if (event.type === "text") {
+              fullText += event.text;
+              bubble.textContent = fullText;
+              messagesEl.scrollTop = messagesEl.scrollHeight;
+            } else if (event.type === "sources") {
+              sources = event.sources;
+            } else if (event.type === "error") {
+              bubble.textContent = `Error: ${event.message}`;
+            }
+          }
+        }
+      } catch (err) {
+        bubble.textContent = `Error: ${err.message}`;
+      }
+
+      // Clean up after streaming finishes
+      bubble.classList.remove("cursor");
+      statusEl.remove();
+      addSources(agentRow, sources);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      history.push({ role: "assistant", content: fullText });
+
+      sendBtn.disabled = false;
+      input.disabled   = false;
+      input.focus();
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const content = input.value.trim();
+      if (!content) return;
+      input.value = "";
+      send(content);
+    });
+  </script>
+</body>
+</html>

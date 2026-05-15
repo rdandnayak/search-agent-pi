@@ -98,13 +98,14 @@ you swap `cli.ts` for `server.ts` and the core logic is untouched.
 
 ---
 
-## Phase 9 — Simple Web UI (optional stretch)
+## ✅ Phase 9 — Simple Web UI (optional stretch)
 Goal: a minimal browser chat interface backed by the Phase 8 API.
 
-- [ ] Plain HTML + vanilla JS — no React, no framework
-- [ ] `fetch` the `/chat` endpoint, render streamed chunks with
-      `ReadableStream`
-- [ ] Show sources as clickable links below each answer
+- [x] `public/index.html` — plain HTML + vanilla JS, no framework, no build step
+- [x] `fetch` + `ReadableStream` to parse NDJSON line by line as it arrives
+- [x] Status line updates in place ("Searching…", "Reflecting…", "Thinking…")
+- [x] Sources shown as clickable links below each assistant bubble
+- [x] `server.ts` now emits `status` events for tool calls and serves `public/`
 
 **What you learn:** streaming HTTP responses in the browser, and how a
 thin UI layer sits cleanly on top of an existing API.
