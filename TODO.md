@@ -167,6 +167,36 @@ server or small VPS without environment setup every time.
 
 ---
 
+## ✅ Phase 16 — Result Quality Scoring
+Goal: drop low-relevance results before the LLM sees them.
+
+- [x] Added `config.minSearchScore: 0.3`
+- [x] Filter by `score >= minSearchScore`; fallback to all results if every result is below threshold
+
+## ✅ Phase 17 — Date-Aware Filtering
+Goal: drop stale dated results; keep evergreen content without dates.
+
+- [x] Added `config.resultMaxAgeDays: 30`
+- [x] Undated results always kept; fallback to unfiltered if < 2 results survive
+
+## ✅ Phase 18 — Query Deduplication Cache
+Goal: return cached results for repeated queries; no redundant Tavily calls.
+
+- [x] Module-level `Map<string, SearchResponse>` in `tools.ts`; normalised cache key
+- [x] `clearSearchCache()` exported for test isolation; 32/32 tests passing
+
+---
+
+## ✅ Phase 19 — Voice Input (Whisper)
+Goal: speak questions instead of typing them; works well with Indian accent English.
+
+- [x] Mic button in web UI — 🎤 click to record, ⏹ click to stop, pulses red while recording
+- [x] `POST /transcribe` in `server.ts` — `express.raw()` parses audio body, forwards to Whisper `whisper-1`
+- [x] Transcript pre-fills input box for user review before sending
+- [x] No changes to `agent.ts` or `tools.ts`
+
+---
+
 ## Backlog
 
 ### Model Switching (was Phase 13)

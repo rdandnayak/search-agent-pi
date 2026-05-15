@@ -1,8 +1,11 @@
 import express from "express";
 import * as path from "path";
+import OpenAI from "openai";
 import { streamAnswer, Message } from "./agent";
 import { config } from "./config";
 import type { SearchResponse } from "./tools";
+
+const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const app = express();
 app.use(express.json());
@@ -80,6 +83,45 @@ app.post("/chat", async (req, res) => {
 
   res.end();
 });
+
+// POST /transcribe
+//
+// Body:  raw audio binary (audio/webm, audio/ogg, audio/mp4 …)
+// Response: { transcript: string }
+//
+// Forwards to OpenAI Whisper. The browser sends whatever MediaRecorder
+// produces (typically audio/webm;codecs=opus). Whisper accepts all common
+// browser audio formats and handles Indian-accent English well.
+app.post(
+  "/transcribe",
+  express.raw({ type: "audio/*", limit: "25mb" }),
+  async (req, res) => {
+    if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ error: "No audio data received" });
+      return;
+    }
+
+    const mimeType = (req.headers["content-type"] ?? "audio/webm").split(";")[0];
+    const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
+
+    try {
+      const file = new File([req.body as unknown as BlobPart], `audio.${ext}`, { type: mimeType });
+      const transcription = await openaiClient.audio.transcriptions.create({
+        file,
+        model: "whisper-1",
+        language: "en",
+        // Vocabulary hint — primes Whisper for Indian-accent English.
+        // Use a word list, not a sentence: Whisper "continues" sentences
+        // when audio is ambiguous, which leaks prompt text into the output.
+        prompt: "India, Bangalore, Mumbai, Delhi, rupees, lakhs, crores",
+      });
+      res.json({ transcript: transcription.text });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: message });
+    }
+  }
+);
 
 // Only start listening when run directly (not when imported in tests).
 if (require.main === module) {

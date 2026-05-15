@@ -13,26 +13,61 @@ export type SearchResult = {
 export type SearchResponse = {
   query: string;
   results: SearchResult[];
+  images: string[]; // direct image URLs returned by Tavily
 };
+
+// Per-session cache: avoids duplicate Tavily calls within one CLI run or server process.
+// Keyed by normalised query string (lowercase + trimmed).
+const searchCache = new Map<string, SearchResponse>();
+export function clearSearchCache() { searchCache.clear(); }
 
 export async function webSearch(query: string): Promise<SearchResponse> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error("TAVILY_API_KEY is not set in your .env file");
 
+  // Phase 18 — cache check: identical query in the same session returns instantly.
+  const cacheKey = query.toLowerCase().trim();
+  if (searchCache.has(cacheKey)) return searchCache.get(cacheKey)!;
+
   const client = tavily({ apiKey });
   const response = await client.search(query, {
     maxResults: config.maxSearchResults,
     searchDepth: config.searchDepth,
+    includeImages: config.includeImages,
   });
 
-  return {
+  // Phase 16 — score filter: drop results below the relevance threshold.
+  // Fallback: if every result is below the threshold, keep all rather than
+  // returning an empty list (a bad search is better than no search).
+  const scored = response.results.filter(r => r.score >= config.minSearchScore);
+  const afterScore = scored.length > 0 ? scored : response.results;
+
+  // Phase 17 — date filter: drop stale dated results; keep undated ones.
+  // Fallback: if fewer than 2 results survive, skip date filtering for this
+  // query (evergreen content should not be discarded entirely).
+  const cutoff = Date.now() - config.resultMaxAgeDays * 86_400_000;
+  const dated = afterScore.filter(r => {
+    if (!r.publishedDate) return true;
+    return new Date(r.publishedDate).getTime() >= cutoff;
+  });
+  const afterDate = dated.length >= 2 ? dated : afterScore;
+
+  // Keep only URLs that point to actual image files, not webpages.
+  // This prevents the agent accidentally embedding page links as <img> src.
+  const IMAGE_EXT = /\.(jpe?g|png|webp|gif|svg|avif)(\?.*)?$/i;
+  const imageUrls = (response.images ?? [])
+    .map(img => img.url)
+    .filter(url => IMAGE_EXT.test(url));
+
+  const result: SearchResponse = {
     query,
-    results: response.results.map((r) => ({
-      title: r.title,
-      url: r.url,
-      content: r.content,
-    })),
+    results: afterDate.map(r => ({ title: r.title, url: r.url, content: r.content })),
+    images: imageUrls,
   };
+
+  // Phase 18 — cache store.
+  searchCache.set(cacheKey, result);
+  return result;
 }
 
 // ── Calculator ────────────────────────────────────────────────────────────────

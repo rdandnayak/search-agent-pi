@@ -34,6 +34,20 @@ export const config = {
   // more results = more context but also more tokens sent to the LLM.
   maxSearchResults: 5,
 
+  // Request image URLs alongside search results. Tavily returns direct image
+  // URLs (not page links) which the agent can embed as markdown images.
+  includeImages: true,
+
+  // Drop results whose Tavily relevance score is below this threshold (0–1).
+  // 0.3 removes clearly off-topic results while keeping borderline ones.
+  // Set to 0 to disable filtering entirely.
+  minSearchScore: 0.3,
+
+  // Drop results whose publishedDate is older than this many days.
+  // Undated (evergreen) results are always kept.
+  // Fallback: if < 2 results survive filtering, all results are returned.
+  resultMaxAgeDays: 30,
+
   // ── URL reader ─────────────────────────────────────────────────────────
   // Max characters of page content sent to the LLM. Higher = more context
   // but more tokens. 5000 covers most article intros and product pages.

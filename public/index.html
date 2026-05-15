@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Search Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -63,6 +64,28 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
+
+    /* Markdown rendered inside agent bubbles */
+    .row.agent .bubble { white-space: normal; }
+    .row.agent .bubble p        { margin: 0 0 0.5em; }
+    .row.agent .bubble p:last-child { margin-bottom: 0; }
+    .row.agent .bubble ul,
+    .row.agent .bubble ol       { margin: 0.25em 0 0.5em 1.4em; }
+    .row.agent .bubble li       { margin-bottom: 0.15em; }
+    .row.agent .bubble strong   { font-weight: 600; }
+    .row.agent .bubble em       { font-style: italic; }
+    .row.agent .bubble code     { font-family: monospace; font-size: 0.88em;
+                                  background: rgba(0,0,0,0.07); border-radius: 3px;
+                                  padding: 0.1em 0.35em; }
+    .row.agent .bubble pre      { background: rgba(0,0,0,0.07); border-radius: 6px;
+                                  padding: 0.7em 0.9em; overflow-x: auto;
+                                  margin: 0.4em 0; }
+    .row.agent .bubble pre code { background: none; padding: 0; }
+    .row.agent .bubble h1,
+    .row.agent .bubble h2,
+    .row.agent .bubble h3       { font-weight: 600; margin: 0.6em 0 0.3em; }
+    .row.agent .bubble a        { color: var(--source-text); }
+    .row.agent .bubble img      { max-width: 100%; border-radius: 6px; margin: 0.4em 0; display: block; }
     .row.user  .bubble { background: var(--user-bg); color: var(--user-text); border-bottom-right-radius: 0.3rem; }
     .row.agent .bubble { background: var(--agent-bg); color: var(--agent-text); border-bottom-left-radius: 0.3rem; }
 
@@ -76,23 +99,39 @@
     .sources {
       margin-top: 0.4rem;
       font-size: 0.8rem;
+    }
+    .sources summary {
+      color: var(--status-text);
+      font-size: 0.78rem;
+      cursor: pointer;
+      list-style: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3em;
+      user-select: none;
+    }
+    .sources summary::-webkit-details-marker { display: none; }
+    .sources summary::before {
+      content: "›";
+      display: inline-block;
+      transition: transform 0.15s;
+    }
+    .sources[open] summary::before { transform: rotate(90deg); }
+    .sources-list {
+      margin-top: 0.35rem;
       display: flex;
       flex-direction: column;
       gap: 0.2rem;
+      padding-left: 0.8rem;
     }
-    .sources a {
+    .sources-list a {
       color: var(--source-text);
       text-decoration: none;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .sources a:hover { text-decoration: underline; }
-    .sources-label {
-      color: var(--status-text);
-      font-size: 0.75rem;
-      margin-bottom: 0.1rem;
-    }
+    .sources-list a:hover { text-decoration: underline; }
 
     /* blinking cursor while streaming */
     .cursor::after {
@@ -130,6 +169,25 @@
       cursor: pointer;
     }
     #send:disabled { opacity: 0.5; cursor: default; }
+
+    #mic {
+      padding: 0.6rem 0.75rem;
+      background: #e9e9eb;
+      color: #333;
+      border: none;
+      border-radius: 1.5rem;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #mic:hover  { background: #d1d1d6; }
+    #mic.recording {
+      background: #ff3b30;
+      color: #fff;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    #mic:disabled { opacity: 0.5; cursor: default; animation: none; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
   </style>
 </head>
 <body>
@@ -137,10 +195,13 @@
   <div id="messages"></div>
   <form id="form">
     <input id="input" autocomplete="off" placeholder="Ask anything…" />
+    <button id="mic"  type="button" title="Click to record voice input">🎤</button>
     <button id="send" type="submit">Send</button>
   </form>
 
   <script>
+    marked.use({ breaks: true }); // treat single newlines as <br>
+
     const messagesEl = document.getElementById("messages");
     const form       = document.getElementById("form");
     const input      = document.getElementById("input");
@@ -175,28 +236,30 @@
 
     function addSources(row, sources) {
       if (!sources.length) return;
-      const seen = new Set();
+      const seen   = new Set();
       const unique = sources.filter(s => !seen.has(s.url) && seen.add(s.url));
       if (!unique.length) return;
 
-      const wrap = document.createElement("div");
-      wrap.className = "sources";
+      const details = document.createElement("details");
+      details.className = "sources";
 
-      const label = document.createElement("div");
-      label.className = "sources-label";
-      label.textContent = "Sources";
-      wrap.appendChild(label);
+      const summary = document.createElement("summary");
+      summary.textContent = `${unique.length} source${unique.length !== 1 ? "s" : ""}`;
+      details.appendChild(summary);
 
+      const list = document.createElement("div");
+      list.className = "sources-list";
       unique.forEach(({ title, url }) => {
         const a = document.createElement("a");
-        a.href = url;
+        a.href   = url;
         a.target = "_blank";
-        a.rel = "noopener noreferrer";
+        a.rel    = "noopener noreferrer";
         a.textContent = title || url;
-        wrap.appendChild(a);
+        list.appendChild(a);
       });
+      details.appendChild(list);
 
-      row.appendChild(wrap);
+      row.appendChild(details);
     }
 
     async function send(content) {
@@ -262,8 +325,18 @@
         bubble.textContent = `Error: ${err.message}`;
       }
 
-      // Clean up after streaming finishes
+      // Clean up after streaming finishes.
+      // Switch from plain text (safe during partial streaming) to rendered
+      // markdown now that we have the complete response.
       bubble.classList.remove("cursor");
+      bubble.innerHTML = marked.parse(fullText);
+
+      // Remove any image that fails to load (hotlink-protected, CORS-blocked,
+      // CDN URLs that the browser can't reach, etc.).
+      bubble.querySelectorAll("img").forEach(img => {
+        img.onerror = () => img.remove();
+      });
+
       statusEl.remove();
       addSources(agentRow, sources);
       messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -274,6 +347,88 @@
       input.disabled   = false;
       input.focus();
     }
+
+    // ── Voice input ──────────────────────────────────────────────────────
+    const micBtn = document.getElementById("mic");
+    let mediaRecorder = null;
+    let audioChunks   = [];
+
+    micBtn.addEventListener("click", async () => {
+      // If already recording — stop and transcribe
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        return;
+      }
+
+      // Request microphone
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        input.placeholder = "Microphone access denied";
+        setTimeout(() => (input.placeholder = "Ask anything…"), 3000);
+        return;
+      }
+
+      audioChunks = [];
+
+      // Pick the best supported MIME type explicitly — leaving it unset can
+      // produce a format or codec Whisper struggles to decode reliably.
+      const preferredMime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"]
+        .find(t => MediaRecorder.isTypeSupported(t)) ?? "";
+      mediaRecorder = new MediaRecorder(stream, preferredMime ? { mimeType: preferredMime } : {});
+
+      // Timeslice of 250 ms: ondataavailable fires every quarter-second so
+      // chunks accumulate even if the user stops quickly.
+      mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks so the browser mic indicator turns off
+        stream.getTracks().forEach(t => t.stop());
+
+        micBtn.textContent = "⏳";
+        micBtn.disabled    = true;
+
+        const blob     = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        const mimeType = (mediaRecorder.mimeType || "audio/webm").split(";")[0];
+
+        // Whisper hallucinates common words ("you", "Thank you.") when the
+        // audio blob is too small — this catches accidental taps or silence.
+        if (blob.size < 3000) {
+          input.placeholder = "Recording too short — try again";
+          setTimeout(() => (input.placeholder = "Ask anything…"), 2500);
+          micBtn.textContent = "🎤";
+          micBtn.disabled    = false;
+          micBtn.classList.remove("recording");
+          return;
+        }
+
+        try {
+          const res = await fetch("/transcribe", {
+            method:  "POST",
+            headers: { "Content-Type": mimeType },
+            body:    blob,
+          });
+          const { transcript, error } = await res.json();
+          if (error) throw new Error(error);
+          input.value = transcript;
+          input.focus();
+        } catch (err) {
+          input.placeholder = `Transcription failed: ${err.message}`;
+          setTimeout(() => (input.placeholder = "Ask anything…"), 4000);
+        } finally {
+          micBtn.textContent  = "🎤";
+          micBtn.disabled     = false;
+          micBtn.classList.remove("recording");
+        }
+      };
+
+      mediaRecorder.start(250); // collect a chunk every 250 ms
+      micBtn.classList.add("recording");
+      micBtn.textContent = "⏹";
+    });
 
     form.addEventListener("submit", (e) => {
       e.preventDefault();

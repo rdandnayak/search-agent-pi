@@ -11,12 +11,13 @@ vi.mock("@tavily/core", () => ({
   })),
 }));
 
-import { webSearch, calculate, readUrl, getWeather } from "../tools";
+import { webSearch, calculate, readUrl, getWeather, clearSearchCache } from "../tools";
 import { tavily } from "@tavily/core";
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
+  clearSearchCache(); // prevent cached results leaking between tests
 });
 
 // ── webSearch ─────────────────────────────────────────────────────────────────
@@ -44,6 +45,149 @@ describe("webSearch", () => {
       "India GDP 2025",
       expect.objectContaining({ searchDepth: "basic" })
     );
+  });
+});
+
+// ── Phase 16: score filter ────────────────────────────────────────────────────
+
+describe("webSearch — score filtering", () => {
+  it("drops results below minSearchScore", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({
+      search: vi.fn().mockResolvedValue({
+        results: [
+          { title: "Good",    url: "https://a.com", content: "a", score: 0.8, publishedDate: "" },
+          { title: "Low",     url: "https://b.com", content: "b", score: 0.1, publishedDate: "" },
+          { title: "Borderline", url: "https://c.com", content: "c", score: 0.3, publishedDate: "" },
+        ],
+      }),
+    });
+
+    const result = await webSearch("test");
+    const titles = result.results.map(r => r.title);
+    expect(titles).toContain("Good");
+    expect(titles).toContain("Borderline"); // exactly at threshold — kept
+    expect(titles).not.toContain("Low");
+  });
+
+  it("falls back to all results when every result is below threshold", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({
+      search: vi.fn().mockResolvedValue({
+        results: [
+          { title: "A", url: "https://a.com", content: "a", score: 0.1, publishedDate: "" },
+          { title: "B", url: "https://b.com", content: "b", score: 0.05, publishedDate: "" },
+        ],
+      }),
+    });
+
+    const result = await webSearch("obscure query");
+    expect(result.results).toHaveLength(2); // all kept — better than nothing
+  });
+});
+
+// ── Phase 17: date filter ─────────────────────────────────────────────────────
+
+describe("webSearch — date filtering", () => {
+  const recentDate = new Date(Date.now() - 5 * 86_400_000).toISOString();   // 5 days ago
+  const staleDate  = new Date(Date.now() - 60 * 86_400_000).toISOString();  // 60 days ago
+
+  it("drops results with a publishedDate older than resultMaxAgeDays", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({
+      search: vi.fn().mockResolvedValue({
+        results: [
+          { title: "Recent", url: "https://a.com", content: "a", score: 0.9, publishedDate: recentDate },
+          { title: "Stale",  url: "https://b.com", content: "b", score: 0.9, publishedDate: staleDate  },
+          { title: "Fresh",  url: "https://c.com", content: "c", score: 0.9, publishedDate: recentDate },
+        ],
+      }),
+    });
+
+    const result = await webSearch("news query");
+    const titles = result.results.map(r => r.title);
+    expect(titles).toContain("Recent");
+    expect(titles).toContain("Fresh");
+    expect(titles).not.toContain("Stale");
+  });
+
+  it("keeps results with no publishedDate (evergreen content)", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({
+      search: vi.fn().mockResolvedValue({
+        results: [
+          { title: "Evergreen", url: "https://a.com", content: "a", score: 0.9, publishedDate: "" },
+          { title: "Stale",     url: "https://b.com", content: "b", score: 0.9, publishedDate: staleDate },
+          { title: "Also Ever", url: "https://c.com", content: "c", score: 0.9, publishedDate: "" },
+        ],
+      }),
+    });
+
+    const result = await webSearch("what is typescript");
+    const titles = result.results.map(r => r.title);
+    expect(titles).toContain("Evergreen");
+    expect(titles).toContain("Also Ever");
+    expect(titles).not.toContain("Stale");
+  });
+
+  it("falls back to all results when fewer than 2 survive date filtering", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({
+      search: vi.fn().mockResolvedValue({
+        results: [
+          { title: "Only recent", url: "https://a.com", content: "a", score: 0.9, publishedDate: recentDate },
+          { title: "Stale 1",    url: "https://b.com", content: "b", score: 0.9, publishedDate: staleDate },
+          { title: "Stale 2",    url: "https://c.com", content: "c", score: 0.9, publishedDate: staleDate },
+        ],
+      }),
+    });
+
+    const result = await webSearch("rare topic");
+    // Only 1 result passes date filter → fallback returns all 3
+    expect(result.results).toHaveLength(3);
+  });
+});
+
+// ── Phase 18: query cache ─────────────────────────────────────────────────────
+
+describe("webSearch — query cache", () => {
+  it("returns cached result on second call without hitting Tavily again", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    const mockSearch = vi.fn().mockResolvedValue({
+      results: [{ title: "Cached", url: "https://a.com", content: "a", score: 0.9, publishedDate: "" }],
+    });
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({ search: mockSearch });
+
+    await webSearch("same query");
+    await webSearch("same query");
+
+    expect(mockSearch).toHaveBeenCalledTimes(1); // second call served from cache
+  });
+
+  it("treats queries as identical after normalising case and whitespace", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    const mockSearch = vi.fn().mockResolvedValue({
+      results: [{ title: "R", url: "https://a.com", content: "a", score: 0.9, publishedDate: "" }],
+    });
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({ search: mockSearch });
+
+    await webSearch("  iPhone Price  ");
+    await webSearch("iphone price");
+
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls Tavily separately for genuinely different queries", async () => {
+    vi.stubEnv("TAVILY_API_KEY", "test-key");
+    const mockSearch = vi.fn().mockResolvedValue({
+      results: [{ title: "R", url: "https://a.com", content: "a", score: 0.9, publishedDate: "" }],
+    });
+    (tavily as ReturnType<typeof vi.fn>).mockReturnValue({ search: mockSearch });
+
+    await webSearch("query one");
+    await webSearch("query two");
+
+    expect(mockSearch).toHaveBeenCalledTimes(2);
   });
 });
 
