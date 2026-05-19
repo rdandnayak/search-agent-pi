@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Search Agent" />
+  <link rel="manifest" href="/manifest.json" />
   <title>Search Agent</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
@@ -21,33 +26,123 @@
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    html, body { height: 100%; }
+    html, body {
+      height: 100dvh;
+      overflow: hidden;
+    }
 
     body {
       font-family: var(--font);
       background: var(--bg);
       display: flex;
       flex-direction: column;
-      height: 100%;
+      height: 100dvh;
     }
 
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 1rem 1.5rem;
+      padding: 0.85rem max(1.5rem, env(safe-area-inset-left));
+      padding-right: max(1rem, env(safe-area-inset-right));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    header span {
       font-weight: 600;
       font-size: 1rem;
     }
 
+    #new-chat {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--source-text);
+      font-size: 1.1rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.5rem;
+      min-width: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+      title: "New chat";
+    }
+    #new-chat:hover { background: var(--bg); }
+    #new-chat:disabled { opacity: 0.35; cursor: default; }
+
     #messages {
       flex: 1;
       overflow-y: auto;
-      padding: 1.5rem 1rem;
+      overflow-x: hidden;
+      padding: 1.25rem 1rem;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
+      scroll-behavior: smooth;
     }
 
+    /* ── Empty state ───────────────────────────────────────────────────── */
+    #empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.25rem;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    #empty-state h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--agent-text);
+    }
+
+    #empty-state p {
+      font-size: 0.9rem;
+      color: var(--status-text);
+    }
+
+    .suggestions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .suggestion {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 0.65rem 1rem;
+      font-size: 0.9rem;
+      font-family: var(--font);
+      color: var(--agent-text);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .suggestion:hover {
+      border-color: var(--user-bg);
+      background: #f0f7ff;
+    }
+
+    .suggestion-skeleton {
+      height: 2.5rem;
+      border-radius: 0.75rem;
+      background: linear-gradient(90deg, var(--border) 25%, #e8e8e8 50%, var(--border) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    /* ── Message rows ──────────────────────────────────────────────────── */
     .row {
       display: flex;
       flex-direction: column;
@@ -55,6 +150,10 @@
     }
     .row.user  { align-self: flex-end; align-items: flex-end; }
     .row.agent { align-self: flex-start; }
+
+    @media (max-width: 600px) {
+      .row { max-width: 90%; }
+    }
 
     .bubble {
       padding: 0.6rem 0.9rem;
@@ -85,7 +184,34 @@
     .row.agent .bubble h2,
     .row.agent .bubble h3       { font-weight: 600; margin: 0.6em 0 0.3em; }
     .row.agent .bubble a        { color: var(--source-text); }
-    .row.agent .bubble img      { max-width: 100%; border-radius: 6px; margin: 0.4em 0; display: block; }
+    .row.agent .bubble img      { max-width: min(100%, 360px); max-height: 260px; object-fit: contain;
+                                  border-radius: 8px; margin: 0.5em 0; display: block;
+                                  cursor: zoom-in; transition: opacity 0.15s; }
+    .row.agent .bubble img:hover { opacity: 0.88; }
+
+    /* ── Lightbox ──────────────────────────────────────────────────────── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox.visible { opacity: 1; }
+    #lightbox img {
+      max-width: 92vw;
+      max-height: 92vh;
+      object-fit: contain;
+      border-radius: 10px;
+      box-shadow: 0 12px 60px rgba(0,0,0,0.7);
+      pointer-events: none;
+    }
     .row.user  .bubble { background: var(--user-bg); color: var(--user-text); border-bottom-right-radius: 0.3rem; }
     .row.agent .bubble { background: var(--agent-bg); color: var(--agent-text); border-bottom-left-radius: 0.3rem; }
 
@@ -127,11 +253,30 @@
     .sources-list a {
       color: var(--source-text);
       text-decoration: none;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      overflow-wrap: break-word;
+      word-break: break-all;
     }
     .sources-list a:hover { text-decoration: underline; }
+
+    .followups {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .followup {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.65rem;
+      padding: 0.45rem 0.75rem;
+      font-size: 0.82rem;
+      font-family: var(--font);
+      color: var(--source-text);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .followup:hover { border-color: var(--user-bg); background: #f0f7ff; }
 
     /* blinking cursor while streaming */
     .cursor::after {
@@ -140,45 +285,59 @@
     }
     @keyframes blink { 50% { opacity: 0; } }
 
+    /* ── Input bar ─────────────────────────────────────────────────────── */
     #form {
       background: var(--surface);
       border-top: 1px solid var(--border);
-      padding: 0.75rem 1rem;
+      padding: 0.6rem max(1rem, env(safe-area-inset-right)) max(0.6rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
       display: flex;
-      gap: 0.5rem;
+      align-items: flex-end;
+      gap: 0.4rem;
+      flex-shrink: 0;
     }
 
     #input {
       flex: 1;
       padding: 0.6rem 0.9rem;
       border: 1px solid var(--border);
-      border-radius: 1.5rem;
+      border-radius: 1.25rem;
       font-size: 0.95rem;
       font-family: var(--font);
       outline: none;
+      resize: none;
+      overflow-y: hidden;
+      line-height: 1.45;
+      max-height: calc(1.45em * 5 + 1.2rem); /* ~5 lines */
+      display: block;
     }
     #input:focus { border-color: var(--user-bg); }
 
+    #send, #mic {
+      flex-shrink: 0;
+      min-width: 44px;
+      min-height: 44px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, opacity 0.15s;
+    }
+
     #send {
-      padding: 0.6rem 1.2rem;
       background: var(--user-bg);
       color: #fff;
-      border: none;
-      border-radius: 1.5rem;
-      font-size: 0.95rem;
-      cursor: pointer;
+      padding: 0;
     }
-    #send:disabled { opacity: 0.5; cursor: default; }
+    #send:disabled { opacity: 0.45; cursor: default; }
+    #send:not(:disabled):hover { background: #005bbf; }
 
     #mic {
-      padding: 0.6rem 0.75rem;
-      background: #e9e9eb;
+      background: var(--agent-bg);
       color: #333;
-      border: none;
-      border-radius: 1.5rem;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: background 0.15s;
+      font-size: 1.05rem;
+      padding: 0;
     }
     #mic:hover  { background: #d1d1d6; }
     #mic.recording {
@@ -186,30 +345,119 @@
       color: #fff;
       animation: pulse 1s ease-in-out infinite;
     }
-    #mic:disabled { opacity: 0.5; cursor: default; animation: none; }
+    #mic:disabled { opacity: 0.45; cursor: default; animation: none; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
   </style>
 </head>
 <body>
-  <header>Search Agent</header>
-  <div id="messages"></div>
+  <div id="lightbox" role="dialog" aria-modal="true" aria-label="Image preview">
+    <img id="lightbox-img" src="" alt="" />
+  </div>
+
+  <header>
+    <span>Search Agent</span>
+    <button id="new-chat" title="New chat" aria-label="New chat">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/>
+      </svg>
+    </button>
+  </header>
+
+  <div id="messages">
+    <div id="empty-state">
+      <div>
+        <h2>Search Agent</h2>
+        <p>Ask me anything — I'll search the web for you.</p>
+      </div>
+      <div class="suggestions">
+        <div class="suggestion-skeleton"></div>
+        <div class="suggestion-skeleton"></div>
+        <div class="suggestion-skeleton"></div>
+        <div class="suggestion-skeleton"></div>
+      </div>
+    </div>
+  </div>
+
   <form id="form">
-    <input id="input" autocomplete="off" placeholder="Ask anything…" />
-    <button id="mic"  type="button" title="Click to record voice input">🎤</button>
-    <button id="send" type="submit">Send</button>
+    <textarea id="input" rows="1" autocomplete="off" autocorrect="off" autocapitalize="sentences" placeholder="Ask anything…"></textarea>
+    <button id="mic" type="button" title="Voice input" aria-label="Voice input">🎤</button>
+    <button id="send" type="submit" title="Send" aria-label="Send">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
   </form>
 
   <script>
-    marked.use({ breaks: true }); // treat single newlines as <br>
+    marked.use({ breaks: true });
 
-    const messagesEl = document.getElementById("messages");
-    const form       = document.getElementById("form");
-    const input      = document.getElementById("input");
-    const sendBtn    = document.getElementById("send");
+    const messagesEl  = document.getElementById("messages");
+    const emptyState  = document.getElementById("empty-state");
+    const form        = document.getElementById("form");
+    const inputEl     = document.getElementById("input");
+    const sendBtn     = document.getElementById("send");
+    const newChatBtn  = document.getElementById("new-chat");
 
-    // Client-owned conversation history — sent in full with every request.
     const history = [];
 
+    // ── Auto-grow textarea ───────────────────────────────────────────────
+    function resizeInput() {
+      inputEl.style.height = "auto";
+      inputEl.style.height = inputEl.scrollHeight + "px";
+    }
+    inputEl.addEventListener("input", resizeInput);
+
+    // ── New chat ─────────────────────────────────────────────────────────
+    newChatBtn.addEventListener("click", () => {
+      history.length = 0;
+      // Remove all message rows but keep the empty state
+      [...messagesEl.children].forEach(el => {
+        if (el.id !== "empty-state") el.remove();
+      });
+      emptyState.style.display = "";
+      inputEl.value = "";
+      resizeInput();
+      inputEl.focus();
+    });
+
+    // ── Suggestion chips ─────────────────────────────────────────────────
+    const suggestionsEl = document.querySelector(".suggestions");
+
+    function renderSuggestions(questions) {
+      suggestionsEl.innerHTML = "";
+      questions.forEach(q => {
+        const btn = document.createElement("button");
+        btn.className = "suggestion";
+        btn.textContent = q;
+        btn.addEventListener("click", () => {
+          inputEl.value = q;
+          resizeInput();
+          form.requestSubmit();
+        });
+        suggestionsEl.appendChild(btn);
+      });
+    }
+
+    fetch("/questions")
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.questions?.length) renderSuggestions(data.questions); })
+      .catch(() => { suggestionsEl.innerHTML = ""; });
+
+    function hideEmptyState() {
+      if (emptyState.style.display !== "none") {
+        emptyState.style.display = "none";
+      }
+    }
+
+    function setControlsDisabled(disabled) {
+      sendBtn.disabled  = disabled;
+      inputEl.disabled  = disabled;
+      newChatBtn.disabled = disabled;
+    }
+
+    // ── DOM helpers ──────────────────────────────────────────────────────
     function addRow(role) {
       const row = document.createElement("div");
       row.className = `row ${role}`;
@@ -222,11 +470,13 @@
       const b = document.createElement("div");
       b.className = "bubble";
       b.textContent = text;
+      b.addEventListener("error", e => {
+        if (e.target instanceof HTMLImageElement) e.target.remove();
+      }, true);
       row.appendChild(b);
       return b;
     }
 
-    // The status line sits above the agent bubble and updates in place.
     function addStatus(row) {
       const s = document.createElement("div");
       s.className = "status";
@@ -258,25 +508,41 @@
         list.appendChild(a);
       });
       details.appendChild(list);
-
       row.appendChild(details);
     }
 
+    function addFollowups(row, questions) {
+      if (!questions.length) return;
+      const div = document.createElement("div");
+      div.className = "followups";
+      questions.forEach(q => {
+        const btn = document.createElement("button");
+        btn.className = "followup";
+        btn.textContent = q;
+        btn.addEventListener("click", () => {
+          inputEl.value = q;
+          resizeInput();
+          form.requestSubmit();
+        });
+        div.appendChild(btn);
+      });
+      row.appendChild(div);
+    }
+
+    // ── Send message ─────────────────────────────────────────────────────
     async function send(content) {
-      // Show user bubble
+      hideEmptyState();
+
       const userRow = addRow("user");
       addBubble(userRow, content);
-
       history.push({ role: "user", content });
 
-      // Prepare agent row with status + empty streaming bubble
-      const agentRow   = addRow("agent");
-      const statusEl   = addStatus(agentRow);
-      const bubble     = addBubble(agentRow, "");
+      const agentRow = addRow("agent");
+      const statusEl = addStatus(agentRow);
+      const bubble   = addBubble(agentRow, "");
       bubble.classList.add("cursor");
 
-      sendBtn.disabled = true;
-      input.disabled   = true;
+      setControlsDisabled(true);
       statusEl.textContent = "Thinking…";
 
       let fullText = "";
@@ -291,7 +557,6 @@
 
         if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
-        // Parse NDJSON from a ReadableStream line by line.
         const reader  = res.body.getReader();
         const decoder = new TextDecoder();
         let buf = "";
@@ -302,7 +567,7 @@
 
           buf += decoder.decode(value, { stream: true });
           const lines = buf.split("\n");
-          buf = lines.pop() ?? "";    // keep partial last line in buffer
+          buf = lines.pop() ?? "";
 
           for (const line of lines) {
             if (!line.trim()) continue;
@@ -312,7 +577,7 @@
               statusEl.textContent = event.message;
             } else if (event.type === "text") {
               fullText += event.text;
-              bubble.textContent = fullText;
+              bubble.innerHTML = marked.parse(fullText);
               messagesEl.scrollTop = messagesEl.scrollHeight;
             } else if (event.type === "sources") {
               sources = event.sources;
@@ -325,17 +590,8 @@
         bubble.textContent = `Error: ${err.message}`;
       }
 
-      // Clean up after streaming finishes.
-      // Switch from plain text (safe during partial streaming) to rendered
-      // markdown now that we have the complete response.
       bubble.classList.remove("cursor");
       bubble.innerHTML = marked.parse(fullText);
-
-      // Remove any image that fails to load (hotlink-protected, CORS-blocked,
-      // CDN URLs that the browser can't reach, etc.).
-      bubble.querySelectorAll("img").forEach(img => {
-        img.onerror = () => img.remove();
-      });
 
       statusEl.remove();
       addSources(agentRow, sources);
@@ -343,49 +599,98 @@
 
       history.push({ role: "assistant", content: fullText });
 
-      sendBtn.disabled = false;
-      input.disabled   = false;
-      input.focus();
+      setControlsDisabled(false);
+      inputEl.focus();
+
+      // Fetch follow-up suggestions non-blocking — controls already re-enabled
+      fetch("/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      })
+        .then(r => r.ok ? r.json() : { questions: [] })
+        .then(({ questions }) => addFollowups(agentRow, questions))
+        .catch(() => {});
     }
+
+    // ── Lightbox ─────────────────────────────────────────────────────────
+    const lightbox    = document.getElementById("lightbox");
+    const lightboxImg = document.getElementById("lightbox-img");
+
+    function openLightbox(src, alt) {
+      lightboxImg.src = src;
+      lightboxImg.alt = alt;
+      lightbox.classList.add("open");
+      requestAnimationFrame(() => lightbox.classList.add("visible"));
+    }
+
+    function closeLightbox() {
+      lightbox.classList.remove("visible");
+      lightbox.addEventListener("transitionend", () => lightbox.classList.remove("open"), { once: true });
+    }
+
+    lightbox.addEventListener("click", closeLightbox);
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeLightbox(); });
+
+    // Event delegation — catch image clicks inside any agent bubble
+    messagesEl.addEventListener("click", e => {
+      const img = e.target.closest(".row.agent img");
+      if (img) openLightbox(img.src, img.alt);
+    });
 
     // ── Voice input ──────────────────────────────────────────────────────
     const micBtn = document.getElementById("mic");
     let mediaRecorder = null;
     let audioChunks   = [];
 
+    // Reflect current permission state in the mic button immediately.
+    // Also watches for changes (e.g. user revokes in browser settings).
+    function applyMicPermission(state) {
+      if (state === "denied") {
+        micBtn.disabled = true;
+        micBtn.title    = "Microphone access denied — check browser settings";
+      } else {
+        micBtn.disabled = false;
+        micBtn.title    = "Voice input";
+      }
+    }
+
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: "microphone" }).then(status => {
+        applyMicPermission(status.state);
+        status.onchange = () => applyMicPermission(status.state);
+      }).catch(() => {});
+    }
+
     micBtn.addEventListener("click", async () => {
-      // If already recording — stop and transcribe
       if (mediaRecorder && mediaRecorder.state === "recording") {
         mediaRecorder.stop();
         return;
       }
 
-      // Request microphone
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Permission just granted — update button state and let the browser cache it.
+        applyMicPermission("granted");
       } catch {
-        input.placeholder = "Microphone access denied";
-        setTimeout(() => (input.placeholder = "Ask anything…"), 3000);
+        applyMicPermission("denied");
+        inputEl.placeholder = "Microphone access denied — check browser settings";
+        setTimeout(() => (inputEl.placeholder = "Ask anything…"), 3500);
         return;
       }
 
       audioChunks = [];
 
-      // Pick the best supported MIME type explicitly — leaving it unset can
-      // produce a format or codec Whisper struggles to decode reliably.
       const preferredMime = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"]
         .find(t => MediaRecorder.isTypeSupported(t)) ?? "";
       mediaRecorder = new MediaRecorder(stream, preferredMime ? { mimeType: preferredMime } : {});
 
-      // Timeslice of 250 ms: ondataavailable fires every quarter-second so
-      // chunks accumulate even if the user stops quickly.
       mediaRecorder.ondataavailable = e => {
         if (e.data.size > 0) audioChunks.push(e.data);
       };
 
       mediaRecorder.onstop = async () => {
-        // Stop all tracks so the browser mic indicator turns off
         stream.getTracks().forEach(t => t.stop());
 
         micBtn.textContent = "⏳";
@@ -394,11 +699,9 @@
         const blob     = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
         const mimeType = (mediaRecorder.mimeType || "audio/webm").split(";")[0];
 
-        // Whisper hallucinates common words ("you", "Thank you.") when the
-        // audio blob is too small — this catches accidental taps or silence.
         if (blob.size < 3000) {
-          input.placeholder = "Recording too short — try again";
-          setTimeout(() => (input.placeholder = "Ask anything…"), 2500);
+          inputEl.placeholder = "Recording too short — try again";
+          setTimeout(() => (inputEl.placeholder = "Ask anything…"), 2500);
           micBtn.textContent = "🎤";
           micBtn.disabled    = false;
           micBtn.classList.remove("recording");
@@ -413,11 +716,12 @@
           });
           const { transcript, error } = await res.json();
           if (error) throw new Error(error);
-          input.value = transcript;
-          input.focus();
+          inputEl.value = transcript;
+          resizeInput();
+          inputEl.focus();
         } catch (err) {
-          input.placeholder = `Transcription failed: ${err.message}`;
-          setTimeout(() => (input.placeholder = "Ask anything…"), 4000);
+          inputEl.placeholder = `Transcription failed: ${err.message}`;
+          setTimeout(() => (inputEl.placeholder = "Ask anything…"), 4000);
         } finally {
           micBtn.textContent  = "🎤";
           micBtn.disabled     = false;
@@ -425,17 +729,32 @@
         }
       };
 
-      mediaRecorder.start(250); // collect a chunk every 250 ms
+      mediaRecorder.start(250);
       micBtn.classList.add("recording");
       micBtn.textContent = "⏹";
     });
 
+    // ── Service worker ───────────────────────────────────────────────────
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    // ── Form submit ──────────────────────────────────────────────────────
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const content = input.value.trim();
+      const content = inputEl.value.trim();
       if (!content) return;
-      input.value = "";
+      inputEl.value = "";
+      resizeInput();
       send(content);
+    });
+
+    // Enter submits, Shift+Enter inserts newline
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
     });
   </script>
 </body>

@@ -9,10 +9,46 @@ const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const app = express();
 app.use(express.json());
+app.use((_req, res, next) => {
+  res.setHeader("Permissions-Policy", "microphone=self");
+  next();
+});
 app.use(express.static(path.join(process.cwd(), "public")));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+// GET /questions
+//
+// Returns 4 contextual suggested questions for the empty-state chips.
+// Generated fresh each page load so they feel timely (date-aware, user-profile-aware).
+app.get("/questions", async (_req, res) => {
+  try {
+    const completion = await openaiClient.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content:
+            `Today is ${new Date().toDateString()}. Random seed: ${Math.random().toFixed(6)}. ` +
+            "Generate 4 short, specific questions a user in Jayanagar, Bangalore, India might want to ask a search agent right now. " +
+            "The user: drives a Tata Altroz, has a toddler daughter, is interested in investments/credit cards/financial freedom, is an engineering manager. " +
+            "Pick 4 DIFFERENT categories randomly from: current news, Bangalore weather, fuel/driving costs, nearby places or restaurants, parenting tips, stock market, credit card offers, weekend activities, sports, tech product prices, health, home improvement, travel. " +
+            "Make the questions specific and varied — avoid repeating similar topics across reloads. " +
+            "Keep each question under 65 characters. Return only a JSON array of 4 strings, no other text.",
+        },
+      ],
+      max_tokens: 200,
+      temperature: 1.0,
+    });
+    const raw = completion.choices[0].message.content?.trim() ?? "[]";
+    const match = raw.match(/\[[\s\S]*\]/);
+    const questions: string[] = match ? JSON.parse(match[0]) : [];
+    res.json({ questions: questions.slice(0, 4) });
+  } catch {
+    res.json({ questions: [] });
+  }
 });
 
 // POST /chat
@@ -82,6 +118,40 @@ app.post("/chat", async (req, res) => {
   }
 
   res.end();
+});
+
+// POST /suggest
+//
+// Body:  { messages: [{ role, content }] } — full conversation incl. last assistant turn
+// Response: { questions: string[] }        — 3 follow-up question suggestions
+app.post("/suggest", async (req, res) => {
+  const { messages } = req.body as { messages: Message[] };
+  if (!Array.isArray(messages) || messages.length < 2) {
+    res.json({ questions: [] });
+    return;
+  }
+  try {
+    const completion = await openaiClient.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        ...messages.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
+        {
+          role: "user",
+          content:
+            "Based on our conversation, suggest 3 brief follow-up questions I might want to ask. " +
+            "Return only a JSON array of strings, no other text.",
+        },
+      ],
+      max_tokens: 150,
+      temperature: 0.7,
+    });
+    const raw = completion.choices[0].message.content?.trim() ?? "[]";
+    const match = raw.match(/\[[\s\S]*\]/);
+    const questions: string[] = match ? JSON.parse(match[0]) : [];
+    res.json({ questions: questions.slice(0, 3) });
+  } catch {
+    res.json({ questions: [] });
+  }
 });
 
 // POST /transcribe

@@ -57,6 +57,11 @@ export const config = {
   // Fallback city when the user asks about weather without specifying one.
   defaultCity: "Bangalore",
 
+  // ── Trip cost ──────────────────────────────────────────────────────────
+  // Base URL of the trip-cost API. Defaults to the Docker service name.
+  // Override with TRIP_COST_API_URL=http://localhost:3000 for local dev.
+  tripCostApiUrl: process.env.TRIP_COST_API_URL ?? "http://trip-cost:3000",
+
   // ── Server ─────────────────────────────────────────────────────────────
   port: Number(process.env.PORT ?? 3000),
 };

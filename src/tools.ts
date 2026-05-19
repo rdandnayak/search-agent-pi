@@ -10,10 +10,16 @@ export type SearchResult = {
   content: string;
 };
 
+export type SearchImage = {
+  url: string;
+  description?: string;
+};
+
 export type SearchResponse = {
   query: string;
   results: SearchResult[];
-  images: string[]; // direct image URLs returned by Tavily
+  images: SearchImage[];
+  answer?: string; // Tavily AI summary — quick starting point for the agent
 };
 
 // Per-session cache: avoids duplicate Tavily calls within one CLI run or server process.
@@ -34,6 +40,8 @@ export async function webSearch(query: string): Promise<SearchResponse> {
     maxResults: config.maxSearchResults,
     searchDepth: config.searchDepth,
     includeImages: config.includeImages,
+    includeImageDescriptions: true,
+    includeAnswer: "basic",
   });
 
   // Phase 16 — score filter: drop results below the relevance threshold.
@@ -55,14 +63,15 @@ export async function webSearch(query: string): Promise<SearchResponse> {
   // Keep only URLs that point to actual image files, not webpages.
   // This prevents the agent accidentally embedding page links as <img> src.
   const IMAGE_EXT = /\.(jpe?g|png|webp|gif|svg|avif)(\?.*)?$/i;
-  const imageUrls = (response.images ?? [])
-    .map(img => img.url)
-    .filter(url => IMAGE_EXT.test(url));
+  const images: SearchImage[] = (response.images ?? [])
+    .filter(img => IMAGE_EXT.test(img.url))
+    .map(img => ({ url: img.url, description: img.description }));
 
   const result: SearchResponse = {
     query,
     results: afterDate.map(r => ({ title: r.title, url: r.url, content: r.content })),
-    images: imageUrls,
+    images,
+    answer: response.answer,
   };
 
   // Phase 18 — cache store.
@@ -176,4 +185,33 @@ export async function getWeather(city: string): Promise<WeatherResult> {
     windKph:      c.wind_speed_10m,
     condition:    WMO_CODES[c.weather_code] ?? `Code ${c.weather_code}`,
   };
+}
+
+// ── Trip cost ─────────────────────────────────────────────────────────────────
+
+export type TripCostResult = {
+  fuel_needed: number;
+  cost: number;
+  currency: string;
+  distance_calculated: number;
+  trip_type: string;
+  input_distance: number;
+};
+
+export async function calculateTripCost(params: {
+  distance_km: number;
+  round_trip?: boolean;
+  fuel_price_per_litre?: number;
+  mileage_kmpl?: number;
+}): Promise<TripCostResult> {
+  const url = new URL(`${config.tripCostApiUrl}/trip-cost`);
+  url.searchParams.set("distance_km", String(params.distance_km));
+  url.searchParams.set("format", "json");
+  if (params.round_trip !== undefined)         url.searchParams.set("round_trip", String(params.round_trip));
+  if (params.fuel_price_per_litre !== undefined) url.searchParams.set("fuel_price_per_litre", String(params.fuel_price_per_litre));
+  if (params.mileage_kmpl !== undefined)       url.searchParams.set("mileage_kmpl", String(params.mileage_kmpl));
+
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5_000) });
+  if (!res.ok) throw new Error(`Trip cost API error: HTTP ${res.status}`);
+  return res.json() as Promise<TripCostResult>;
 }
